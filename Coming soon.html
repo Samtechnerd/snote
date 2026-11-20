@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en" data-mode="colour">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Snote — Coming Soon</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0c1633;
+      --surface: #132046;
+      --surface-elevated: #192956;
+      --border: rgba(255, 255, 255, 0.12);
+      --text-primary: #f5f7ff;
+      --text-secondary: #9fb0d6;
+      --accent: #38e2d8;
+      --accent-end: #8cf2b5;
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+      --radius-lg: 20px;
+      --radius-pill: 999px;
+      --transition: all 0.25s ease;
+    }
+
+    /* Monochrome E-paper Mode: Pure black & white, 1.5pt outlines, no shadows/gradients */
+    [data-mode="epaper"] {
+      --bg: #ffffff;
+      --surface: #ffffff;
+      --surface-elevated: #ffffff;
+      --border: #000000;
+      --text-primary: #000000;
+      --text-secondary: #000000;
+      --accent: #000000;
+      --accent-end: #000000;
+      --shadow: none;
+      --transition: none;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      padding: 2rem 1.5rem;
+      transition: var(--transition);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Top Status Badge */
+    .top-bar {
+      width: 100%;
+      max-width: 960px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      border-radius: var(--radius-pill);
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      box-shadow: var(--shadow);
+    }
+
+    .badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    /* Main Hero Section */
+    main {
+      max-width: 620px;
+      width: 100%;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.75rem;
+      margin: auto 0;
+    }
+
+    /* Custom Vector Recreation of the Snote Script + Pencil Logo */
+    .logo-wrap {
+      width: 100%;
+      max-width: 380px;
+      padding: 0.5rem;
+    }
+
+    .logo-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    [data-mode="epaper"] .logo-stroke {
+      stroke: #000000 !important;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 5vw, 3rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+    }
+
+    .subtitle {
+      font-size: 1.1rem;
+      line-height: 1.6;
+      color: var(--text-secondary);
+      max-width: 480px;
+    }
+
+    /* Feature Pills */
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.65rem;
+    }
+
+    .feature-pill {
+      padding: 0.55rem 1rem;
+      border-radius: var(--radius-pill);
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    /* Bottom Display Mode Switch (Inspired by Snote's Sidebar Switch) */
+    footer {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+      padding-top: 2rem;
+    }
+
+    .display-switch {
+      display: inline-flex;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-pill);
+      padding: 4px;
+      box-shadow: var(--shadow);
+    }
+
+    .switch-btn {
+      min-height: 44px;
+      padding: 0 1.25rem;
+      border: none;
+      border-radius: var(--radius-pill);
+      background: transparent;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .switch-btn.active {
+      background: var(--surface-elevated);
+      color: var(--accent);
+    }
+
+    [data-mode="epaper"] .switch-btn.active {
+      background: #000000;
+      color: #ffffff;
+    }
+
+    .copyright {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="top-bar">
+    <div class="badge">
+      <span class="badge-dot"></span>
+      <span>Coming Soon</span>
+    </div>
+  </div>
+
+  <main>
+    <!-- Crisp Inline SVG of the Snote Script & Pencil Logo -->
+    <div class="logo-wrap" aria-label="Snote Logo">
+      <svg class="logo-svg" viewBox="0 0 540 210" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="snoteGrad" x1="30" y1="150" x2="495" y2="35" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#1FD4DF" />
+            <stop offset="55%" stop-color="#4CE8C4" />
+            <stop offset="100%" stop-color="#96F5AE" />
+          </linearGradient>
+        </defs>
+
+        <!-- Continuous Cursive "Snote" Path -->
+        <path class="logo-stroke"
+          d="M 48 92
+             C 78 106, 128 84, 128 52
+             C 128 24, 82 22, 76 54
+             C 70 86, 134 114, 126 154
+             C 118 188, 56 188, 54 152
+             C 52 118, 108 102, 146 98
+             C 156 97, 160 112, 152 138
+             C 162 110, 184 96, 198 100
+             C 210 104, 202 142, 218 144
+             C 232 146, 244 126, 250 114
+             C 246 134, 256 150, 276 148
+             C 296 146, 306 122, 298 104
+             C 290 88, 260 92, 252 112
+             C 264 124, 296 122, 322 104
+             L 346 46
+             L 324 126
+             C 320 142, 332 150, 348 142
+             C 362 134, 374 120, 382 112
+             C 396 116, 412 106, 408 92
+             C 404 80, 382 84, 376 106
+             C 370 128, 386 150, 414 146
+             C 436 142, 452 126, 464 112"
+          stroke="url(#snoteGrad)"
+          stroke-width="10.5"
+          stroke-linecap="round"
+          stroke-linejoin="round" />
+
+        <!-- Crossbar for 't' -->
+        <path class="logo-stroke"
+          d="M 320 76 L 364 68"
+          stroke="url(#snoteGrad)"
+          stroke-width="10"
+          stroke-linecap="round" />
+
+        <!-- Angled Pencil Connected to the Final Stroke -->
+        <g transform="translate(464, 112) rotate(-54)">
+          <!-- Pencil Tip Cone -->
+          <path class="logo-stroke"
+            d="M 0 0 L 24 -11 L 24 11 Z"
+            stroke="url(#snoteGrad)"
+            stroke-width="8.5"
+            stroke-linejoin="round" />
+          <!-- Pencil Graphite Lead -->
+          <path class="logo-stroke"
+            d="M 0 0 L 9 -4 L 9 4 Z"
+            fill="#8CF2B5"
+            stroke="url(#snoteGrad)"
+            stroke-width="4"
+            stroke-linejoin="round" />
+          <!-- Pencil Barrel -->
+          <path class="logo-stroke"
+            d="M 24 -11 L 114 -11 C 122 -11, 126 -6, 126 0 C 126 6, 122 11, 114 11 L 24 11"
+            stroke="url(#snoteGrad)"
+            stroke-width="8.5"
+            stroke-linejoin="round" />
+          <!-- Eraser Band -->
+          <line class="logo-stroke"
+            x1="104" y1="-11" x2="104" y2="11"
+            stroke="url(#snoteGrad)"
+            stroke-width="8" />
+        </g>
+      </svg>
+    </div>
+
+    <h1>Notes that feel like paper.</h1>
+    <p class="subtitle">
+      A distraction-free notebook built for both E-paper and colour displays—combining natural handwriting, seamless typed pages, and palm-proof stylus precision[cite: 10].
+    </p>
+
+    <div class="features">
+      <span class="feature-pill">E-paper &amp; Colour Modes[cite: 10]</span>
+      <span class="feature-pill">Handwriting + Typed Flow[cite: 10]</span>
+      <span class="feature-pill">Stylus-Only Precision[cite: 10]</span>
+    </div>
+  </main>
+
+  <footer>
+    <div class="display-switch" role="group" aria-label="Display mode preview">
+      <button type="button" class="switch-btn" id="btnEpaper">E-paper</button>
+      <button type="button" class="switch-btn active" id="btnColour">Colour</button>
+    </div>
+    <p class="copyright">&copy; 2026 Snote. All rights reserved.</p>
+  </footer>
+
+  <script>
+    const html = document.documentElement;
+    const btnEpaper = document.getElementById('btnEpaper');
+    const btnColour = document.getElementById('btnColour');
+
+    btnEpaper.addEventListener('click', () => {
+      html.setAttribute('data-mode', 'epaper');
+      btnEpaper.classList.add('active');
+      btnColour.classList.remove('active');
+    });
+
+    btnColour.addEventListener('click', () => {
+      html.setAttribute('data-mode', 'colour');
+      btnColour.classList.add('active');
+      btnEpaper.classList.remove('active');
+    });
+  </script>
+</body>
+</html>
