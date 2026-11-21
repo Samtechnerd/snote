@@ -113,7 +113,7 @@
   #nbscreen { position: absolute; inset: 0; background: var(--bg); }
   #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px 76px 16px 16px; }
   #wrap { position: relative; line-height: 0; }
-  canvas { background: #fff; display: block; border: 1.5px solid var(--outline); box-shadow: var(--shadow); }
+  canvas { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; background: #fff; display: block; border: 1.5px solid var(--outline); box-shadow: var(--shadow); }
   #boxEd { position: absolute; background: #fff; color: #000; border: 1.5px dashed var(--accent); border-radius: 2px; resize: none; overflow: hidden; line-height: 1.2; font-family: Roboto, system-ui, "Segoe UI", sans-serif; outline: none; }
   .fab { position: absolute; z-index: 4; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; }
   #menuFab { top: 12px; left: 12px; }
@@ -1023,8 +1023,11 @@ function refreshTools() {
 // ------------------------------------------------------------------ drawing, erasing, text boxes
 let live = null, base = null, dragBox = null, erasedNow = null;
 function pt(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * PW, y: (e.clientY - r.top) / r.height * PH }; }
+let penSeen = false;   // once a stylus has touched the page, fingers stop drawing (palm rejection)
+function fingerBlocked(e) { if (e.pointerType === "pen") penSeen = true; return e.pointerType === "touch" && penSeen && tool !== "text"; }
 function onDown(e) {
   if (!edit || !curPage() || e.button > 0) return;
+  if (fingerBlocked(e)) return;
   const p = curPage(), q = pt(e);
   if (tool === "pen" || tool === "marker") {
     cv.setPointerCapture(e.pointerId);
@@ -1043,6 +1046,7 @@ function onDown(e) {
 function addPoint(q, e) { live.pts.push(q.x, q.y, e.pressure > 0 ? e.pressure : 0.5, performance.now() - live.t0); live.n++; }
 function onMove(e) {
   if (!edit) return;
+  if (e.pointerType === "touch" && penSeen && !live && !erasedNow && !dragBox) return;
   const q = pt(e);
   if (live) {
     addPoint(q, e);
