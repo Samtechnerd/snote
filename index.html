@@ -158,6 +158,24 @@
   #msg.bad { color: var(--danger); }
   #empty { color: var(--muted); text-align: center; padding: 24px; }
 
+  /* typed page editor: the whole document, A4 wide, with a formatting bar */
+  #nbscreen.docediting #rail, #nbscreen.docediting #bottom, #nbscreen.docediting #saveState { display: none; }
+  #docEd { position: absolute; inset: 0; z-index: 2; background: var(--bg); display: flex; flex-direction: column; }
+  #docbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 10px 12px 6px 68px; min-height: 64px; }
+  #docbar .tb { width: auto; min-width: 40px; height: 40px; padding: 0 10px; font-size: 14px; border: var(--ow) solid var(--outline); background: var(--surface); }
+  #docbar .tb.sel { background: var(--sel-bg); color: var(--sel-text); }
+  #docbar select { min-height: 40px; border-radius: 10px; border: var(--ow) solid var(--outline); background: var(--surface); color: var(--text); font: inherit; font-size: 14px; padding: 0 8px; }
+  #docbar .info { font-size: 12px; color: var(--muted); margin-left: 6px; }
+  #docscroll { flex: 1; overflow: auto; padding: 8px 16px 40px; display: flex; justify-content: center; align-items: flex-start; }
+  #docsheet { background: #fff; color: #000; flex: none; width: calc(595px * var(--k, 1)); min-height: calc(842px * var(--k, 1)); padding: calc(56px * var(--k, 1)); border: 1.5px solid var(--outline); box-shadow: var(--shadow); outline: none; font-family: Roboto, system-ui, "Segoe UI", sans-serif; line-height: 1.2; counter-reset: n; }
+  #docsheet .p { position: relative; min-height: 1.2em; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #docsheet .p[data-list="number"] { counter-increment: n; }
+  #docsheet .p:not([data-list="number"]) { counter-reset: n; }
+  #docsheet .p[data-list="bullet"]::before { content: "\2022"; position: absolute; left: var(--ind, 0px); }
+  #docsheet .p[data-list="number"]::before { content: counter(n) "."; position: absolute; left: var(--ind, 0px); }
+  #docsheet .p[data-brk] { color: transparent; border-top: 1px dashed #999; margin: 6px 0; }
+  #docsheet .p[data-brk]::after { content: "Page break"; position: absolute; right: 0; top: 0; font-size: 11px; color: #999; }
+
   /* sheets (New Notebook, New Folder) */
   .scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; padding: 12px; }
   .sheet { width: 100%; max-width: 480px; max-height: 92vh; overflow-y: auto; border-radius: 20px; padding: 16px; display: grid; gap: 12px; }
@@ -219,7 +237,7 @@
         <div id="pill" class="surface"><button id="prev">&lsaquo;</button><span id="pageNo"></span><button id="next">&rsaquo;</button></div>
         <button class="fab surface" id="plusFab" title="Pages">+</button>
       </div>
-      <div id="plusMenu" class="menu surface hidden"><button id="addPage">Add page</button><button id="delPage" class="danger" style="color:var(--danger)">Delete this page</button></div>
+      <div id="plusMenu" class="menu surface hidden"><button id="addPage">Add page</button><button id="addTyped">Add typed page</button><button id="delPage" class="danger" style="color:var(--danger)">Delete this page</button></div>
       <div id="saveState"></div>
       <div id="msg" class="hidden"></div>
       <div id="nbPanelWrap" class="hidden">
@@ -236,6 +254,7 @@
   </div>
 </div>
 <div id="sheetHost"></div>
+<input type="file" id="pdfFile" accept="application/pdf,.pdf" class="hidden">
 
 <script>
 "use strict";
@@ -317,7 +336,7 @@ function toFields(obj) {
     if (k.startsWith("_")) continue;
     const v = obj[k];
     if (v === null || v === undefined) f[k] = { nullValue: null };
-    else if (typeof v === "string") f[k] = k === "strokes" ? { bytesValue: v } : { stringValue: v };
+    else if (typeof v === "string") f[k] = (k === "strokes" || k === "data") ? { bytesValue: v } : { stringValue: v };
     else if (typeof v === "boolean") f[k] = { booleanValue: v };
     else if (typeof v === "number") f[k] = Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
   }
@@ -353,6 +372,14 @@ const cloud = {
     });
     return j.filter(x => x.document).map(x => fromDoc(x.document));
   },
+  async chunksOf(nbId) {
+    const j = await this.call(`${FS}/users/${session.uid}:runQuery`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "pdfchunks" }],
+        where: { fieldFilter: { field: { fieldPath: "notebookId" }, op: "EQUAL", value: { stringValue: nbId } } } } }),
+    });
+    return j.filter(x => x.document).map(x => fromDoc(x.document)).sort((a, b) => a.index - b.index);
+  },
   async get(col, id) {
     try { return fromDoc(await this.call(`${FS}/users/${session.uid}/${col}/${encodeURIComponent(id)}`)); } catch (e) { return null; }
   },
@@ -363,8 +390,9 @@ const cloud = {
   },
   async del(col, id) { await this.call(`${FS}/users/${session.uid}/${col}/${encodeURIComponent(id)}`, { method: "DELETE" }); },
 };
-const demoStore = { folders: {}, notebooks: {}, pages: {}, documents: {}, deleted: {} };
+const demoStore = { folders: {}, notebooks: {}, pages: {}, documents: {}, deleted: {}, pdfs: {}, pdfchunks: {} };
 const mem = {
+  async chunksOf(nbId) { return Object.keys(demoStore.pdfchunks).filter(id => demoStore.pdfchunks[id].notebookId === nbId).map(id => Object.assign({ _id: id }, demoStore.pdfchunks[id])).sort((a, b) => a.index - b.index); },
   async list(col) { return Object.keys(demoStore[col]).map(id => Object.assign({ _id: id }, demoStore[col][id])); },
   async pagesOf(nbId) { return Object.keys(demoStore.pages).filter(id => demoStore.pages[id].notebookId === nbId).map(id => Object.assign({ _id: id }, demoStore.pages[id])); },
   async get(col, id) { const d = demoStore[col][id]; return d ? Object.assign({ _id: id }, d) : null; },
@@ -541,7 +569,8 @@ function textToContent(oldJson, text) {
 function boxHeight(b) { const c = parseContent(b.content); return Math.max(b.h || 0, layout(c.paras, c.spacing, Math.max(20, b.w - 8)).height + 8); }
 
 // ------------------------------------------------------------------ pages in memory
-const typedCache = {};
+const typedCache = {};          // documentId -> its text split into pages (lines)
+const docModels = {};           // documentId -> { id, paras, spacing, content }
 function prepPage(p) {
   p._strokes = decodeStrokes(p.strokes);
   try { p._boxes = JSON.parse(p.boxes || "[]"); } catch (e) { p._boxes = []; }
@@ -564,11 +593,15 @@ function renderPage(ctx, nb, pg, scale) {
     }
   } else {
     if (pg.type === "PDF") {
-      ctx.fillStyle = "#f4f4f6"; ctx.fillRect(0, 0, PW, PH);
-      ctx.fillStyle = "#8e8e93"; ctx.font = "16px sans-serif"; ctx.textAlign = "center";
-      ctx.fillText("PDF page " + ((pg.pdfPage || 0) + 1), PW / 2, PH / 2 - 10);
-      ctx.font = "12px sans-serif"; ctx.fillText("The original PDF is not synced, only your notes.", PW / 2, PH / 2 + 12);
-      ctx.textAlign = "left";
+      const bmp = pdfBitmaps[pdfKey(pg)];
+      if (bmp) ctx.drawImage(bmp, 0, 0, PW, PH);
+      else {
+        ctx.fillStyle = "#f4f4f6"; ctx.fillRect(0, 0, PW, PH);
+        ctx.fillStyle = "#8e8e93"; ctx.font = "16px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("PDF page " + ((pg.pdfPage || 0) + 1), PW / 2, PH / 2 - 10);
+        ctx.font = "12px sans-serif"; ctx.fillText(pdfErrors[pg.notebookId] || "Loading the PDF…", PW / 2, PH / 2 + 12);
+        ctx.textAlign = "left";
+      }
     } else drawPaper(ctx, nb.paperStyle);
     (pg._boxes || []).slice().sort((a, b) => a.z - b.z).forEach(b => {
       if (b.id === editingBoxId) return;
@@ -578,6 +611,49 @@ function renderPage(ctx, nb, pg, scale) {
   }
   (pg._strokes || []).forEach(s => drawStroke(ctx, s));
   ctx.restore();
+}
+
+// ------------------------------------------------------------------ imported PDFs (drawn with pdf.js, loaded only when a PDF is opened)
+const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+let pdfLibPromise = null;
+function loadPdfLib() {
+  if (window.pdfjsLib) { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js"; return Promise.resolve(window.pdfjsLib); }
+  if (!pdfLibPromise) pdfLibPromise = new Promise((res, rej) => {
+    const s = document.createElement("script"); s.src = PDFJS + "pdf.min.js";
+    s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js"; res(window.pdfjsLib); };
+    s.onerror = () => { pdfLibPromise = null; rej(new Error("Could not load the PDF viewer library (check the connection)")); };
+    document.head.appendChild(s);
+  });
+  return pdfLibPromise;
+}
+const pdfDocs = {}, pdfBitmaps = {}, pdfErrors = {}, pdfOrder = [];
+const pdfKey = pg => pg.notebookId + ":" + (pg.pdfPage || 0);
+/** The stored file of an imported PDF, opened for drawing. */
+function getPdf(nbId) {
+  if (!pdfDocs[nbId]) pdfDocs[nbId] = (async () => {
+    const lib = await loadPdfLib();
+    const meta = await backend.get("pdfs", nbId);
+    if (!meta) throw new Error("The PDF file is not in the cloud yet. Open the app and let it sync.");
+    const chunks = await backend.chunksOf(nbId);
+    if (chunks.length < meta.chunks) throw new Error("The PDF is still uploading. Try again in a moment.");
+    const parts = chunks.map(c => b64ToBytes(c.data)); const bytes = new Uint8Array(parts.reduce((a, p) => a + p.length, 0)); let o = 0;
+    parts.forEach(p => { bytes.set(p, o); o += p.length; });
+    return lib.getDocument({ data: bytes }).promise;
+  })().catch(e => { delete pdfDocs[nbId]; throw e; });
+  return pdfDocs[nbId];
+}
+/** One PDF page fitted onto the A4 page (centred, white around it), like the app does. */
+async function ensurePdfBitmap(pg) {
+  const key = pdfKey(pg); if (pdfBitmaps[key]) return pdfBitmaps[key];
+  try {
+    const pdf = await getPdf(pg.notebookId), page = await pdf.getPage((pg.pdfPage || 0) + 1);
+    const v1 = page.getViewport({ scale: 1 }), s = Math.min(PW / v1.width, PH / v1.height), R = 2.5, vp = page.getViewport({ scale: s * R });
+    const c = document.createElement("canvas"); c.width = Math.ceil(PW * R); c.height = Math.ceil(PH * R);
+    const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: g, viewport: vp, transform: [1, 0, 0, 1, (c.width - vp.width) / 2, (c.height - vp.height) / 2] }).promise;
+    pdfBitmaps[key] = c; pdfOrder.push(key); while (pdfOrder.length > 6) delete pdfBitmaps[pdfOrder.shift()];
+    delete pdfErrors[pg.notebookId]; return c;
+  } catch (e) { pdfErrors[pg.notebookId] = e.message; return null; }
 }
 
 // ------------------------------------------------------------------ state
@@ -613,11 +689,12 @@ async function waitSaved() { await flush(); while (saving) await new Promise(r =
 window.addEventListener("beforeunload", e => { if (dirty.size && !demo) { flush(); e.preventDefault(); e.returnValue = ""; } });
 
 // ------------------------------------------------------------------ page, notebook and folder operations (same shapes the app syncs)
-async function addPageAfter(afterIdx) {
+async function addPageAfter(afterIdx, opts) {
+  opts = opts || {};
   await waitSaved();
   const now = Date.now();
   for (const p of pages) if (p.index > afterIdx) { p.index += 1; p.updatedAt = now; await backend.put("pages", p.id, pageDoc(p)); }
-  const np = prepPage({ id: uuid(), notebookId: current._id, index: afterIdx + 1, type: "INK", documentId: null, pdfPage: -1, updatedAt: now, boxes: "[]", strokes: null });
+  const np = prepPage({ id: uuid(), notebookId: current._id, index: afterIdx + 1, type: opts.type || "INK", documentId: opts.documentId || null, pdfPage: -1, updatedAt: now, boxes: "[]", strokes: null });
   await backend.put("pages", np.id, pageDoc(np));
   pages.push(np); pages.sort((a, b) => a.index - b.index);
   return np;
@@ -629,14 +706,53 @@ async function deletePageAt(i) {
   await backend.del("pages", p.id);
   pages.splice(i, 1);
   for (const q of pages) if (q.index > p.index) { q.index -= 1; q.updatedAt = now; await backend.put("pages", q.id, pageDoc(q)); }
+  // a typed document with no pages left goes with its last page
+  if (p.type === "TYPED" && p.documentId && !pages.some(q => q.documentId === p.documentId)) {
+    await backend.put("deleted", p.documentId, { kind: "document", updatedAt: now });
+    await backend.del("documents", p.documentId); delete docModels[p.documentId]; delete typedCache[p.documentId];
+  }
+  assignRuns();
 }
-async function createNotebook(title, paper, cover, folderId) {
-  const now = Date.now(), id = uuid();
+function assignRuns() {
+  const seen = {};
+  pages.forEach(p => { if (p.type === "TYPED") { seen[p.documentId] = (seen[p.documentId] || 0); p._run = seen[p.documentId]++; } });
+}
+async function createNotebook(title, paper, cover, folderId, id) {
+  const now = Date.now(); id = id || uuid();
   const nb = { folderId: folderId || null, title: title.trim() || "Untitled", cover, paperStyle: paper, createdAt: now, updatedAt: now, lastOpenedAt: now };
   await backend.put("notebooks", id, nb);
   const p = prepPage({ id: uuid(), notebookId: id, index: 0, type: "INK", documentId: null, pdfPage: -1, updatedAt: now, boxes: "[]", strokes: null });
   await backend.put("pages", p.id, pageDoc(p));
   return Object.assign({ _id: id }, nb);
+}
+/** A typed page: a new document (empty) and its first page, after page afterIdx. */
+const EMPTY_PARA = () => ({ style: "body", align: "left", list: "none", indent: 0, runs: [] });
+async function addTypedPageAfter(afterIdx) {
+  const docId = uuid(), paras = [EMPTY_PARA()], content = contentJson(paras, 1.2);
+  await backend.put("documents", docId, { notebookId: current._id, content, updatedAt: Date.now() });
+  docModels[docId] = { id: docId, paras, spacing: 1.2, content };
+  typedCache[docId] = paginate(layout(paras, 1.2, 483));
+  const np = await addPageAfter(afterIdx, { type: "TYPED", documentId: docId });
+  assignRuns(); return np;
+}
+/** After the text of a document changed: page count follows the text, like in the app. Pages holding ink are never removed. */
+async function syncDocPages(docId) {
+  const m = docModels[docId]; if (!m) return;
+  const pg = paginate(layout(m.paras, m.spacing, 483)); typedCache[docId] = pg;
+  const want = Math.max(1, pg.length);
+  let rows = pages.filter(p => p.documentId === docId).sort((a, b) => a.index - b.index);
+  while (rows.length < want) {
+    const after = pages.indexOf(rows[rows.length - 1]);
+    const np = await addPageAfter(pages[after].index, { type: "TYPED", documentId: docId });
+    assignRuns(); rows = pages.filter(p => p.documentId === docId).sort((a, b) => a.index - b.index);
+  }
+  while (rows.length > want) {
+    const last = rows[rows.length - 1];
+    if ((last._strokes && last._strokes.length) || (last._boxes && last._boxes.length)) break;
+    await deletePageAt(pages.indexOf(last)); rows = pages.filter(p => p.documentId === docId).sort((a, b) => a.index - b.index);
+    if (!rows.length) break;
+  }
+  assignRuns();
 }
 async function createFolder(name) {
   const id = uuid(), order = Math.max(-1, ...folders.map(f => f.sortOrder || 0)) + 1;
@@ -652,7 +768,30 @@ async function deleteNotebookCascade(nb) {
   for (const d of docIds) await backend.put("deleted", d, { kind: "document", updatedAt: now });
   for (const p of ps) await backend.del("pages", p._id);
   for (const d of docIds) await backend.del("documents", d);
+  // an imported PDF's stored file goes too
+  for (const c of await backend.chunksOf(nb._id)) await backend.del("pdfchunks", c._id);
+  await backend.del("pdfs", nb._id);
   await backend.del("notebooks", nb._id);
+}
+/** Import: the PDF file is stored in 600 KB pieces (a Firestore document is limited to 1 MB); the small record that lists it is written last. */
+const CHUNK = 600000, MAX_PDF = 25 * 1024 * 1024;
+async function uploadPdf(nbId, bytes, name, onProgress) {
+  const n = Math.ceil(bytes.length / CHUNK), now = Date.now();
+  for (let i = 0; i < n; i++) {
+    await backend.put("pdfchunks", nbId + "_" + i, { notebookId: nbId, index: i, data: bytesToB64(bytes.subarray(i * CHUNK, (i + 1) * CHUNK)), updatedAt: now });
+    if (onProgress) onProgress((i + 1) / n);
+  }
+  await backend.put("pdfs", nbId, { name, size: bytes.length, chunks: n, updatedAt: now });
+}
+async function createPdfNotebook(id, title, folderId, pageCount) {
+  const now = Date.now();
+  await backend.put("notebooks", id, { folderId: folderId || null, title: title.trim() || "Untitled PDF", cover: 0, paperStyle: "BLANK", createdAt: now, updatedAt: now, lastOpenedAt: now });
+  for (let s = 0; s < pageCount; s += 8) {
+    await Promise.all(Array.from({ length: Math.min(8, pageCount - s) }, (_, k) => {
+      const i = s + k, p = prepPage({ id: uuid(), notebookId: id, index: i, type: "PDF", documentId: null, pdfPage: i, updatedAt: now, boxes: "[]", strokes: null });
+      return backend.put("pages", p.id, pageDoc(p));
+    }));
+  }
 }
 
 // ------------------------------------------------------------------ tab bar
@@ -679,6 +818,7 @@ function renderTabs() {
   const plus = document.createElement("button"); plus.id = "newTab"; plus.innerHTML = "<span>+</span>"; plus.onclick = () => selectTab("start"); bar.appendChild(plus);
 }
 async function selectTab(id) {
+  if (docEd) await closeDocEditor();
   await waitSaved(); closeBoxEditor(true);
   active = id;
   if (id === "start") { current = null; showStart(); return; }
@@ -686,6 +826,7 @@ async function selectTab(id) {
   await openNotebook(nb, current && current._id === id ? idx : 0);
 }
 async function closeTab(id) {
+  if (docEd) await closeDocEditor();
   await waitSaved();
   tabs = tabs.filter(t => t !== id); store.set("snote_tabs", JSON.stringify(tabs));
   if (active === id) { active = "start"; current = null; showStart(); } else renderTabs();
@@ -744,6 +885,8 @@ function renderStart() {
   });
   const nt = document.createElement("div"); nt.innerHTML = '<div class="tile surface">+</div><div class="tilelabel">New Notebook</div>'; nt.style.width = "96px";
   nt.firstChild.style.cursor = "pointer"; nt.firstChild.onclick = () => newNotebookSheet(); grid.appendChild(nt);
+  const ip = document.createElement("div"); ip.innerHTML = '<div class="tile surface" style="font-size:22px">PDF</div><div class="tilelabel">Import PDF</div>'; ip.style.width = "96px";
+  ip.firstChild.style.cursor = "pointer"; ip.firstChild.onclick = () => $("pdfFile").click(); grid.appendChild(ip);
 }
 $("search").oninput = e => { query = e.target.value; renderStart(); };
 
@@ -828,10 +971,10 @@ async function openNotebook(nb, startIdx, quiet) {
     const ids = [...new Set(pages.filter(p => p.type === "TYPED" && p.documentId).map(p => p.documentId))];
     await Promise.all(ids.map(async id => {
       const d = await backend.get("documents", id); const c = d ? parseContent(d.content) : { paras: [{ runs: [] }], spacing: 1.2 };
+      docModels[id] = { id, paras: c.paras, spacing: c.spacing, content: d ? d.content : "" };
       typedCache[id] = paginate(layout(c.paras, c.spacing, 483));
     }));
-    const seen = {};
-    pages.forEach(p => { if (p.type === "TYPED") { seen[p.documentId] = (seen[p.documentId] || 0); p._run = seen[p.documentId]++; } });
+    assignRuns();
     toast("");
     idx = Math.min(idx, Math.max(0, pages.length - 1));
     showPage();
@@ -861,6 +1004,8 @@ function showPage() {
   cv.style.touchAction = edit ? "none" : "auto";
   cv.style.cursor = !edit ? "default" : tool === "text" ? "text" : tool === "eraser" ? "cell" : "crosshair";
   redraw();
+  const shown = curPage();
+  if (shown.type === "PDF" && !pdfBitmaps[pdfKey(shown)]) ensurePdfBitmap(shown).then(() => { if (curPage() === shown) redraw(); });
   cv.onmousedown = e => { if (edit && tool === "text") e.preventDefault(); };
   cv.onpointerdown = onDown; cv.onpointermove = onMove; cv.onpointerup = onUp; cv.onpointercancel = onUp;
   refreshTools();
@@ -889,7 +1034,7 @@ function onDown(e) {
   } else if (tool === "eraser") {
     cv.setPointerCapture(e.pointerId); erasedNow = []; eraseAt(q);
   } else if (tool === "text") {
-    if (p.type === "TYPED") { toast("Typed pages are edited in the SNote app. You can still draw on them here."); return; }
+    if (p.type === "TYPED") { openDocEditor(p); return; }
     const hit = boxAt(q);
     if (hit) { selectedBox = hit.id; cv.setPointerCapture(e.pointerId); dragBox = { box: hit, sx: q.x, sy: q.y, ox: hit.x, oy: hit.y, moved: false }; refreshTools(); }
     else { selectedBox = null; newBoxAt(q); }
@@ -990,6 +1135,207 @@ function deleteSelectedBox() {
   closeBoxEditor(false); p._boxes = p._boxes.filter(b => b.id !== selectedBox); selectedBox = null; markDirty(p); redraw(); refreshTools();
 }
 
+// ------------------------------------------------------------------ typed page editor
+// The whole document is edited as one A4-wide sheet. Paragraphs are <div class="p"> with data-style/-align/-list/-indent;
+// inline formatting is native (bold, italic, underline, strike). The text is converted to and from the app's paragraph/run model.
+const STYLE_SIZE = { body: 14, subheading: 16, heading: 20, title: 26 };
+let docEd = null, docK = 1;
+function applyRunStyle(s, r, k) {
+  s.style.fontSize = ((r.size || 14) * k) + "px";
+  if (r.bold) s.style.fontWeight = "700"; if (r.italic) s.style.fontStyle = "italic";
+  const deco = [r.underline ? "underline" : "", r.strike ? "line-through" : ""].filter(Boolean).join(" "); if (deco) s.style.textDecoration = deco;
+  if (r.font && r.font !== "sans") s.style.fontFamily = FAMILY[r.font] || FAMILY.sans;
+  if (r.color) s.style.color = argb(r.color); if (r.highlight) s.style.backgroundColor = argb(r.highlight);
+}
+function renderDocDom(root, paras, k) {
+  root.innerHTML = "";
+  paras.forEach(p => {
+    const d = document.createElement("div"); d.className = "p";
+    d.dataset.style = p.style || "body"; d.dataset.align = p.align || "left"; d.dataset.list = p.list || "none"; d.dataset.indent = p.indent || 0;
+    d.style.textAlign = p.align || "left";
+    const ind = (p.indent || 0) * INDENT * k; d.style.setProperty("--ind", ind + "px");
+    d.style.paddingLeft = (ind + (p.list && p.list !== "none" ? LIST_MARGIN * k : 0)) + "px";
+    d.style.fontSize = (14 * k) + "px";
+    const text = (p.runs || []).map(r => r.text || "").join("");
+    if (text === BREAK) { d.dataset.brk = "1"; d.textContent = BREAK; }
+    else if (!text) d.appendChild(document.createElement("br"));
+    else p.runs.forEach(r => { const s = document.createElement("span"); s.textContent = r.text || ""; applyRunStyle(s, r, k); d.appendChild(s); });
+    root.appendChild(d);
+  });
+}
+function rgbToInt(c) {
+  const m = /rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/.exec(c || ""); if (!m) return 0;
+  const a = m[4] === undefined ? 1 : parseFloat(m[4]); if (a === 0) return 0;
+  const v = ((Math.round(a * 255) << 24) | (+m[1] << 16) | (+m[2] << 8) | +m[3]) | 0;
+  return v === (0xFF000000 | 0) ? 0 : v;       // plain black is the default colour
+}
+function walkInline(node, fmt, runs, k) {
+  if (node.nodeType === 3) { if (node.nodeValue) runs.push(Object.assign({ text: node.nodeValue }, fmt)); return; }
+  if (node.nodeType !== 1 || node.tagName === "BR") return;
+  const f = Object.assign({}, fmt), st = node.style, tag = node.tagName;
+  if (tag === "B" || tag === "STRONG" || st.fontWeight === "bold" || parseInt(st.fontWeight, 10) >= 600) f.bold = true;
+  else if (st.fontWeight === "normal" || st.fontWeight === "400") f.bold = false;
+  if (tag === "I" || tag === "EM" || st.fontStyle === "italic") f.italic = true; else if (st.fontStyle === "normal") f.italic = false;
+  const td = (st.textDecorationLine || st.textDecoration || "");
+  if (tag === "U" || td.includes("underline")) f.underline = true; if (tag === "S" || tag === "STRIKE" || tag === "DEL" || td.includes("line-through")) f.strike = true;
+  if (st.fontSize && /px$/.test(st.fontSize)) f.size = Math.max(1, Math.round(parseFloat(st.fontSize) / k));
+  if (st.fontFamily) f.font = /mono|consolas/i.test(st.fontFamily) ? "mono" : /georgia|serif/i.test(st.fontFamily) && !/sans/i.test(st.fontFamily) ? "serif" : "sans";
+  if (st.color) { const c = rgbToInt(st.color); if (c) f.color = c; }
+  if (st.backgroundColor) { const c = rgbToInt(st.backgroundColor); if (c) f.highlight = c; }
+  Array.from(node.childNodes).forEach(c => walkInline(c, f, runs, k));
+}
+function elToPara(el, k) {
+  const raw = [];
+  Array.from(el.childNodes).forEach(c => walkInline(c, { size: 14 }, raw, k));
+  const runs = [];
+  raw.forEach(r => {
+    const clean = { text: r.text, size: r.size || 14 };
+    ["bold", "italic", "underline", "strike", "font", "color", "highlight"].forEach(key => { if (r[key]) clean[key] = r[key]; });
+    const last = runs[runs.length - 1];
+    if (last && JSON.stringify(Object.assign({}, last, { text: "" })) === JSON.stringify(Object.assign({}, clean, { text: "" }))) last.text += clean.text; else runs.push(clean);
+  });
+  const text = runs.map(r => r.text).join("");
+  if (el.dataset.brk || text === BREAK) return { style: "body", align: "left", list: "none", indent: 0, runs: [{ text: BREAK, size: 14 }] };
+  return { style: el.dataset.style || "body", align: el.dataset.align || "left", list: el.dataset.list || "none", indent: parseInt(el.dataset.indent || "0", 10) || 0, runs: runs.filter(r => r.text) };
+}
+function domToParas(root, k) {
+  const out = []; let cur = null;
+  Array.from(root.childNodes).forEach(n => {
+    if (n.nodeType === 1 && /^(DIV|P)$/.test(n.tagName)) { out.push(n); cur = null; }
+    else { if (!cur) { cur = document.createElement("div"); cur.className = "p"; out.push(cur); } cur.appendChild(n.cloneNode(true)); }
+  });
+  const paras = out.map(el => elToPara(el, k));
+  return paras.length ? paras : [EMPTY_PARA()];
+}
+function caretPos(root) {
+  const sel = getSelection(); if (!sel.rangeCount || !root.contains(sel.anchorNode)) return null;
+  let node = sel.anchorNode; while (node && node.parentNode !== root) node = node.parentNode; if (!node) return null;
+  const r = document.createRange(); r.selectNodeContents(node); r.setEnd(sel.anchorNode, sel.anchorOffset);
+  return { idx: Array.prototype.indexOf.call(root.children, node), off: r.toString().length };
+}
+function setCaret(root, pos) {
+  if (!pos) return; const el = root.children[Math.min(pos.idx, root.children.length - 1)]; if (!el) return;
+  const s = getSelection(), r = document.createRange(); let left = pos.off, n; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  while ((n = w.nextNode())) { if (left <= n.nodeValue.length) { r.setStart(n, left); r.collapse(true); s.removeAllRanges(); s.addRange(r); return; } left -= n.nodeValue.length; }
+  r.selectNodeContents(el); r.collapse(true); s.removeAllRanges(); s.addRange(r);
+}
+function selRange(root) {
+  const sel = getSelection(); const find = n => { while (n && n.parentNode !== root) n = n.parentNode; return n ? Array.prototype.indexOf.call(root.children, n) : -1; };
+  if (!sel.rangeCount || !root.contains(sel.anchorNode)) return [0, 0];
+  const a = find(sel.anchorNode), b = find(sel.focusNode); return [Math.max(0, Math.min(a, b)), Math.max(a, b, 0)];
+}
+function mutateDoc(fn) {
+  const root = $("docsheet"), pos = caretPos(root), sel = selRange(root), paras = domToParas(root, docK);
+  const where = fn(paras, sel);                       // an action may say where the cursor should go (e.g. below a page break)
+  renderDocDom(root, paras, docK); root.focus(); setCaret(root, where || pos); scheduleDocSave();
+}
+function docPageCount() { const m = docModels[docEd.docId]; const paras = domToParas($("docsheet"), docK); return Math.max(1, paginate(layout(paras, m.spacing, 483)).length); }
+function scheduleDocSave() {
+  if (!docEd) return;
+  clearTimeout(docEd.infoTimer); docEd.infoTimer = setTimeout(() => { if (docEd) $("docInfo").textContent = docPageCount() + (docPageCount() === 1 ? " page" : " pages"); }, 300);
+  clearTimeout(docEd.timer); saveState("Unsaved changes"); docEd.timer = setTimeout(saveDocNow, 1200);
+}
+let docSaveChain = Promise.resolve();
+function saveDocNow() {
+  docSaveChain = docSaveChain.then(async () => {
+    if (!docEd) return; clearTimeout(docEd.timer);
+    const root = $("docsheet"); if (!root) return;
+    const m = docModels[docEd.docId], paras = domToParas(root, docK), content = contentJson(paras, m.spacing);
+    if (content === m.content) { saveState(""); return; }
+    saveState("Saving…");
+    try {
+      m.paras = paras; m.content = content;
+      await backend.put("documents", docEd.docId, { notebookId: current._id, content, updatedAt: Date.now() });
+      await syncDocPages(docEd.docId);
+      saveState("Saved " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    } catch (e) { saveState("Not saved"); toast("Could not save the text: " + e.message, true); }
+  });
+  return docSaveChain;
+}
+function openDocEditor(page) {
+  if (docEd || !page.documentId) return;
+  const m = docModels[page.documentId]; if (!m) return;
+  closeBoxEditor(true); document.execCommand("defaultParagraphSeparator", false, "div");
+  const scr = $("nbscreen"); scr.classList.add("docediting");
+  const ed = document.createElement("div"); ed.id = "docEd";
+  ed.innerHTML = `<div id="docbar">
+    <select id="dStyle"><option value="body">Body</option><option value="title">Title</option><option value="heading">Heading</option><option value="subheading">Subheading</option></select>
+    <button class="tb" data-cmd="bold"><b>B</b></button><button class="tb" data-cmd="italic"><i>I</i></button><button class="tb" data-cmd="underline"><u>U</u></button><button class="tb" data-cmd="strikeThrough"><s>S</s></button>
+    <button class="tb" data-act="bullet">• List</button><button class="tb" data-act="number">1. List</button>
+    <button class="tb" data-act="left">Left</button><button class="tb" data-act="center">Centre</button><button class="tb" data-act="right">Right</button>
+    <button class="tb" data-act="outdent">&larr;</button><button class="tb" data-act="indent">&rarr;</button>
+    <button class="tb" data-act="break">Page break</button>
+    <button class="btn filled" id="dDone" style="min-height:40px;padding:0 18px">Done</button><span class="info" id="docInfo"></span></div>
+    <div id="docscroll"><div id="docsheet" contenteditable="true" spellcheck="true"></div></div>`;
+  scr.appendChild(ed);
+  const root = $("docsheet");
+  const avail = $("docscroll").clientWidth - 32; docK = Math.max(0.5, Math.min(1.5, avail / 595));
+  root.style.setProperty("--k", docK);
+  docEd = { docId: page.documentId, timer: null, infoTimer: null, startPage: page };
+  renderDocDom(root, m.paras, docK);
+  $("docInfo").textContent = docPageCount() + (docPageCount() === 1 ? " page" : " pages");
+  root.oninput = scheduleDocSave;
+  root.onpaste = e => { e.preventDefault(); const t = (e.clipboardData || window.clipboardData).getData("text/plain"); document.execCommand("insertText", false, t); };
+  ed.querySelectorAll("#docbar .tb, #docbar .btn").forEach(b => b.onmousedown = e => e.preventDefault());       // keep the text selected while pressing a button
+  ed.querySelectorAll("[data-cmd]").forEach(b => b.onclick = () => { root.focus(); document.execCommand(b.dataset.cmd); scheduleDocSave(); });
+  $("dStyle").onchange = e => { const s = e.target.value; mutateDoc((ps, [lo, hi]) => { for (let i = lo; i <= hi; i++) { const p = ps[i]; if (!p || (p.runs[0] && p.runs[0].text === BREAK)) continue; p.style = s; p.runs = p.runs.map(r => Object.assign({}, r, { size: STYLE_SIZE[s], bold: s !== "body" })); } }); };
+  ed.querySelectorAll("[data-act]").forEach(b => b.onclick = () => {
+    const a = b.dataset.act;
+    mutateDoc((ps, [lo, hi]) => {
+      if (a === "break") { ps.splice(hi + 1, 0, { style: "body", align: "left", list: "none", indent: 0, runs: [{ text: BREAK, size: 14 }] }, EMPTY_PARA()); return { idx: hi + 2, off: 0 }; }
+      const same = k => ps.slice(lo, hi + 1).every(p => p.list === k);
+      for (let i = lo; i <= hi; i++) {
+        const p = ps[i]; if (!p) continue;
+        if (a === "bullet" || a === "number") p.list = same(a) ? "none" : a;
+        else if (a === "left" || a === "center" || a === "right") p.align = a;
+        else if (a === "indent") p.indent = Math.min(6, (p.indent || 0) + 1);
+        else if (a === "outdent") p.indent = Math.max(0, (p.indent || 0) - 1);
+      }
+    });
+  });
+  $("dDone").onclick = closeDocEditor;
+  setTimeout(() => root.focus(), 0);
+}
+async function closeDocEditor() {
+  if (!docEd) return;
+  const startPage = docEd.startPage; await saveDocNow();
+  const ed = $("docEd"); if (ed) ed.remove(); $("nbscreen").classList.remove("docediting");
+  docEd = null; saveState("");
+  idx = Math.max(0, Math.min(idx, pages.length - 1)); showPage();
+}
+
+// ------------------------------------------------------------------ importing a PDF
+async function startPdfImport(file) {
+  if (!file) return;
+  if (file.size > MAX_PDF) { toast("That PDF is " + (file.size / 1048576).toFixed(1) + " MB. The limit is 25 MB.", true); return; }
+  try {
+    toast("Reading the PDF…");
+    const lib = await loadPdfLib(), bytes = new Uint8Array(await file.arrayBuffer());
+    const doc = await lib.getDocument({ data: bytes.slice() }).promise;      // pdf.js takes its own copy
+    toast("");
+    const name = file.name.replace(/\.pdf$/i, ""), pageCount = doc.numPages;
+    sheet("Import PDF", "Import", body => {
+      let folderId = selFolder === "all" ? null : selFolder;
+      body.innerHTML = `<input class="field" id="pname" placeholder="Name"><div class="label" style="margin:0">Folder</div><div class="row" id="pf"></div>
+        <div class="muted" style="font-size:13px">${pageCount} page${pageCount === 1 ? "" : "s"}. Each page of the PDF becomes a notebook page you can write, draw and type on.</div>`;
+      body.querySelector("#pname").value = name;
+      const redraw = () => { const pf = body.querySelector("#pf"); pf.innerHTML = ""; [[null, "No folder"]].concat(folders.map(f => [f._id, f.name])).forEach(([id, n]) => { const b = document.createElement("button"); b.className = "chip" + (folderId === id ? " sel" : ""); b.textContent = n; b.onclick = () => { folderId = id; redraw(); }; pf.appendChild(b); }); };
+      redraw();
+      return () => ({ name: body.querySelector("#pname").value, folderId });
+    }, async v => {
+      const id = uuid();
+      try {
+        await uploadPdf(id, bytes, file.name, f => toast("Uploading the PDF… " + Math.round(f * 100) + "%"));
+        toast("Creating the notebook…");
+        await createPdfNotebook(id, v.name, v.folderId, pageCount);
+        toast(""); await loadLibrary();
+        const n = notebooks.find(x => x._id === id); if (n) openTab(n);
+      } catch (e) { toast("Could not import the PDF: " + e.message, true); }
+    });
+  } catch (e) { toast("Could not read that PDF: " + e.message + " (password-protected files are not supported)", true); }
+}
+$("pdfFile").onchange = e => { const f = e.target.files[0]; e.target.value = ""; startPdfImport(f); };
+
 // ------------------------------------------------------------------ wiring
 async function signOut() {
   await waitSaved(); session = null; demo = false; backend = cloud; forget(); current = null; pages = []; tabs = []; active = "start"; tool = null; edit = false;
@@ -997,13 +1343,13 @@ async function signOut() {
 }
 $("prev").onclick = async () => { await waitSaved(); go(-1); }; $("next").onclick = async () => { await waitSaved(); go(1); };
 document.addEventListener("keydown", e => {
-  if (e.target && (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT" || e.target.tagName === "SELECT")) return;
-  if (active === "start") return;
+  if (e.target && (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.isContentEditable)) return;
+  if (active === "start" || docEd) return;
   if (e.key === "ArrowLeft") go(-1); if (e.key === "ArrowRight") go(1);
   if (edit && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
   if (edit && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") { e.preventDefault(); redo(); }
 });
-window.addEventListener("resize", () => { if (current && pages.length && active !== "start" && !editingBoxId && !live) showPage(); });
+window.addEventListener("resize", () => { if (current && pages.length && active !== "start" && !editingBoxId && !live && !docEd) showPage(); });
 document.querySelectorAll("[data-tool]").forEach(b => b.onclick = () => setTool(tool === b.dataset.tool ? null : b.dataset.tool));
 document.querySelectorAll("[data-col]").forEach(b => b.onclick = () => { colIdx = +b.dataset.col; if (tool !== "pen" && tool !== "marker") setTool("pen"); else refreshTools(); });
 $("undo").onclick = undo; $("redo").onclick = redo; $("delBox").onclick = deleteSelectedBox;
@@ -1017,14 +1363,20 @@ $("addPage").onclick = async () => {
   $("plusMenu").classList.add("hidden");
   try { await addPageAfter(idx); idx = idx + 1; showPage(); } catch (e) { toast("Could not add the page: " + e.message, true); }
 };
+$("addTyped").onclick = async () => {
+  $("plusMenu").classList.add("hidden");
+  try { const np = await addTypedPageAfter(idx); idx = pages.indexOf(np); showPage(); setTool("text"); openDocEditor(np); }
+  catch (e) { toast("Could not add the typed page: " + e.message, true); }
+};
 $("delPage").onclick = async () => {
   $("plusMenu").classList.add("hidden");
   if (!pages.length || !confirm("Delete this page? This also removes it from your other devices.")) return;
   try { await deletePageAt(idx); idx = Math.min(idx, pages.length - 1); showPage(); } catch (e) { toast("Could not delete the page: " + e.message, true); }
 };
-$("png").onclick = () => {
+$("png").onclick = async () => {
   $("nbPanelWrap").classList.add("hidden");
   if (!pages.length) return;
+  if (curPage().type === "PDF") await ensurePdfBitmap(curPage());
   const c2 = document.createElement("canvas"); c2.width = PW * 3; c2.height = PH * 3;
   renderPage(c2.getContext("2d"), current, curPage(), 3);
   c2.toBlob(b => { const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `${(current.title || "page").replace(/[^\w\- ]+/g, "_")}-${idx + 1}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); });
@@ -1095,7 +1447,7 @@ $("demoBtn").onclick = async () => {
   showLogin("");
 })();
 // pick up changes made on the tablet when coming back to this tab (never while there are unsaved edits)
-document.addEventListener("visibilitychange", () => { if (!document.hidden && session && !demo && !dirty.size && !live && !editingBoxId) loadLibrary(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && session && !demo && !dirty.size && !live && !editingBoxId && !docEd) loadLibrary(); });
 </script>
 </body>
 </html>
