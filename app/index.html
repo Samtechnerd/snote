@@ -1,0 +1,1457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SNote</title>
+<style>
+  /* Design tokens: the same values as the app's Colour mode (light and dark). */
+  :root {
+    --bg: #F2F2F7; --bar: #E3E3E8; --surface: #FFFFFF; --text: #000000; --muted: #8E8E93;
+    --accent: #007AFF; --on-accent: #FFFFFF; --sel-bg: #DCEBFF; --sel-text: #007AFF;
+    --outline: #D1D1D6; --ow: 0.8px; --danger: #FF3B30;
+    --shadow: 0 2px 8px rgba(0,0,0,.10), 0 0 1px rgba(0,0,0,.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #000000; --bar: #1C1C1E; --surface: #1C1C1E; --text: #FFFFFF; --muted: #8E8E93;
+      --accent: #0A84FF; --sel-bg: #12304F; --sel-text: #0A84FF; --outline: #38383A; --danger: #FF453A;
+      --shadow: 0 2px 10px rgba(0,0,0,.55);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #000000; --bar: #1C1C1E; --surface: #1C1C1E; --text: #FFFFFF; --muted: #8E8E93;
+    --accent: #0A84FF; --sel-bg: #12304F; --sel-text: #0A84FF; --outline: #38383A; --danger: #FF453A;
+    --shadow: 0 2px 10px rgba(0,0,0,.55);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body { font: 16px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  button:disabled { cursor: default; }
+  .hidden { display: none !important; }
+  .muted { color: var(--muted); }
+
+  /* shared pieces: NbButton, NbSegmented, NbSectionLabel, surfaces */
+  .surface { background: var(--surface); border: var(--ow) solid var(--outline); box-shadow: var(--shadow); }
+  .btn { min-height: 44px; padding: 0 20px; border-radius: 50px; font-weight: 600; color: var(--accent); display: inline-flex; align-items: center; justify-content: center; }
+  .btn.filled { background: var(--accent); color: var(--on-accent); }
+  .btn.outlined { border: 1px solid var(--accent); }
+  .btn.danger { color: var(--danger); }
+  .label { font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin: 10px 0 4px; letter-spacing: .02em; }
+  .seg { display: flex; gap: 2px; padding: 2px; border-radius: 10px; background: var(--bg); border: var(--ow) solid var(--outline); }
+  .seg button { flex: 1; min-height: 40px; border-radius: 8px; font-size: 14px; font-weight: 600; }
+  .seg button.sel { background: var(--sel-bg); color: var(--sel-text); }
+  .field { width: 100%; min-height: 44px; padding: 0 12px; border-radius: 10px; border: var(--ow) solid var(--outline); background: var(--surface); color: var(--text); font: inherit; font-size: 16px; }
+  .field::placeholder { color: var(--muted); }
+  .chip { min-height: 36px; padding: 0 14px; border-radius: 50px; border: var(--ow) solid var(--outline); background: var(--surface); font-size: 15px; font-weight: 600; }
+  .chip.sel { background: var(--sel-bg); color: var(--sel-text); }
+  .err { color: var(--danger); font-size: 14px; min-height: 1.2em; }
+
+  /* sign-in */
+  #login { height: 100%; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .card { width: 100%; max-width: 400px; border-radius: 20px; padding: 24px; display: grid; gap: 12px; }
+  .brand { font-size: 34px; font-weight: 700; margin: 0; letter-spacing: -.5px; }
+  .brand i { font-style: normal; color: var(--accent); }
+
+  /* app frame */
+  #app { height: 100%; display: flex; flex-direction: column; }
+  #demoBanner { background: #FF9500; color: #000; text-align: center; font-size: 13px; padding: 4px 8px; }
+  #content { flex: 1; min-height: 0; position: relative; }
+
+  /* tab bar: Chrome-style, Start first, the active tab joins the page below */
+  #tabbar { height: 44px; background: var(--bar); border-bottom: var(--ow) solid var(--outline); display: flex; align-items: flex-end; padding: 0 8px; overflow-x: auto; overflow-y: hidden; flex: none; scrollbar-width: none; }
+  #tabbar::-webkit-scrollbar { display: none; }
+  .tab { height: 38px; width: 160px; flex: none; display: flex; align-items: center; padding-left: 12px; border-radius: 10px 10px 0 0; font-size: 13px; font-weight: 500; cursor: pointer; position: relative; }
+  .tab.start { width: 96px; }
+  .tab.sel { background: var(--bg); font-weight: 600; margin-bottom: calc(var(--ow) * -1); height: 39px; }
+  .tab .ti { width: 16px; height: 16px; border-radius: 3px; flex: none; margin-right: 8px; }
+  .tab .tt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tab .x { width: 34px; height: 100%; font-size: 18px; font-weight: 700; color: var(--muted); display: flex; align-items: center; justify-content: center; }
+  .tabsep { width: var(--ow); height: 16px; background: var(--outline); margin: 0 0 11px; flex: none; }
+  #newTab { width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; margin-left: 6px; }
+  #newTab span { width: 30px; height: 30px; border-radius: 50%; border: var(--ow) solid var(--outline); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; }
+
+  /* Start page */
+  #start { height: 100%; display: flex; }
+  #folders { width: 160px; flex: none; padding: 12px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+  #folders h2 { margin: 0 0 8px 12px; font-size: 20px; font-weight: 700; }
+  .sbitem { min-height: 44px; padding: 0 12px; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; font-weight: 500; text-align: left; width: 100%; }
+  .sbitem.sel { background: var(--sel-bg); color: var(--sel-text); }
+  .sbitem .n { font-size: 14px; color: var(--muted); } .sbitem.sel .n { color: var(--sel-text); }
+  #folderSpacer { flex: 1; }
+  #startMain { flex: 1; min-width: 0; padding: 16px 24px 0 8px; display: flex; flex-direction: column; }
+  #startHead { display: flex; align-items: center; gap: 12px; }
+  #startHead .t { flex: 1; min-width: 0; }
+  #startHead h1 { margin: 0; font-size: 28px; font-weight: 700; }
+  #search { width: 200px; }
+  #grid { margin-top: 16px; flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px 14px; align-content: start; padding-bottom: 24px; }
+  .nbitem { width: 96px; }
+  .cover { width: 96px; height: 118px; border-radius: 10px; position: relative; overflow: hidden; cursor: pointer; border: var(--ow) solid var(--outline); box-shadow: var(--shadow); }
+  .cover .ct { position: absolute; left: 6px; right: 6px; bottom: 6px; text-align: center; color: #fff; font-size: 13px; font-weight: 600; padding: 3px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nbitem .sub { margin-top: 4px; font-size: 12px; color: var(--muted); }
+  .nbitem .del { min-height: 44px; padding-top: 4px; font-size: 12px; font-weight: 600; color: var(--accent); display: block; }
+  .tile { width: 96px; height: 118px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 36px; font-weight: 700; color: var(--accent); }
+  .tilelabel { margin-top: 4px; font-size: 12px; font-weight: 600; }
+  #startStatus { font-size: 14px; color: var(--muted); min-height: 20px; margin-top: 4px; }
+  .acct { font-size: 13px; }
+  .acct .em { font-weight: 600; overflow-wrap: anywhere; }
+  .acct .btn { min-height: 40px; padding: 0 14px; margin-top: 6px; width: 100%; }
+  @media (max-width: 599px) {
+    #start { flex-direction: column; }
+    #folders { width: auto; flex-direction: row; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; padding: 12px 16px 0; align-items: center; }
+    #folders h2, #folders .acct, #folders .label, #folders .seg { display: none; }
+    .sbitem { width: auto; border-radius: 50px; border: var(--ow) solid var(--outline); background: var(--surface); flex: none; gap: 8px; min-height: 36px; }
+    #folderSpacer { display: none; }
+    #startMain { padding: 12px 16px 0; }
+    #startHead { flex-wrap: wrap; } #search { width: 100%; }
+    #compactBottom { display: block !important; }
+  }
+  #compactBottom { display: none; padding: 8px 16px 12px; border-top: var(--ow) solid var(--outline); }
+
+  /* notebook screen: page in the middle, floating round menu button, tool rail, page pill */
+  #nbscreen { position: absolute; inset: 0; background: var(--bg); }
+  #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px 76px 16px 16px; }
+  #wrap { position: relative; line-height: 0; }
+  canvas { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; background: #fff; display: block; border: 1.5px solid var(--outline); box-shadow: var(--shadow); }
+  #boxEd { position: absolute; background: #fff; color: #000; border: 1.5px dashed var(--accent); border-radius: 2px; resize: none; overflow: hidden; line-height: 1.2; font-family: Roboto, system-ui, "Segoe UI", sans-serif; outline: none; }
+  .fab { position: absolute; z-index: 4; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; }
+  #menuFab { top: 12px; left: 12px; }
+  #menuFab i, #menuFab i::before, #menuFab i::after { display: block; width: 18px; height: 2px; background: var(--text); border-radius: 1px; position: relative; content: ""; }
+  #menuFab i::before { position: absolute; top: -6px; } #menuFab i::after { position: absolute; top: 6px; }
+  #rail { position: absolute; z-index: 3; display: flex; align-items: center; gap: 2px; background: var(--surface); border: var(--ow) solid var(--outline); box-shadow: var(--shadow); }
+  .tb { width: 44px; height: 44px; border-radius: 10px; font-size: 11px; font-weight: 600; flex: none; }
+  .tb.sel { background: var(--sel-bg); color: var(--sel-text); }
+  .tb:disabled { color: rgba(142,142,147,.5); }
+  .tb.red { color: var(--danger); }
+  .sep { background: var(--outline); flex: none; }
+  .sw { width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+  .sw i { width: 22px; height: 22px; border-radius: 50%; border: var(--ow) solid var(--outline); display: block; }
+  .sw.sel { box-shadow: inset 0 0 0 2px var(--accent); }
+  /* portrait / narrow: the tools lie along the top */
+  #rail { top: 12px; left: 50%; transform: translateX(-50%); flex-direction: row; height: 46px; border-radius: 23px; padding: 0 8px; max-width: calc(100% - 140px); overflow-x: auto; scrollbar-width: none; }
+  #rail .sep { width: var(--ow); height: 26px; margin: 0 6px; }
+  #stage { padding: 70px 16px 70px; }
+  /* landscape: a vertical rail on the right */
+  @media (orientation: landscape) and (min-width: 700px) {
+    #rail { top: 50%; right: 12px; left: auto; transform: translateY(-50%); flex-direction: column; width: 60px; height: auto; border-radius: 20px; padding: 8px 0; max-width: none; max-height: calc(100% - 24px); overflow-y: auto; overflow-x: hidden; align-items: center; }
+    #rail .sep { width: 36px; height: var(--ow); margin: 6px 0; }
+    #stage { padding: 16px 84px 16px 70px; }
+  }
+  #bottom { position: absolute; z-index: 3; bottom: 12px; left: 0; right: 0; display: flex; justify-content: center; gap: 8px; pointer-events: none; }
+  #bottom > * { pointer-events: auto; }
+  #pill { height: 44px; border-radius: 22px; display: flex; align-items: center; padding: 0 4px; }
+  #pill button { width: 40px; height: 40px; font-size: 22px; border-radius: 50%; }
+  #pill button:disabled { color: rgba(142,142,147,.5); }
+  #pageNo { font-weight: 600; font-size: 15px; padding: 0 8px; min-width: 110px; text-align: center; }
+  #plusFab { position: static; }
+  .menu { position: absolute; z-index: 6; bottom: 64px; border-radius: 14px; padding: 6px; min-width: 190px; }
+  .menu button { display: block; width: 100%; min-height: 44px; padding: 0 12px; text-align: left; border-radius: 10px; font-weight: 500; }
+  .menu button:hover { background: var(--bg); }
+  #plusMenu { left: 50%; transform: translateX(40px); }
+  #nbPanelWrap { position: absolute; inset: 0; z-index: 7; }
+  #nbPanel { position: absolute; top: 12px; bottom: 12px; left: 12px; width: 260px; max-width: calc(100% - 24px); border-radius: 20px; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+  #nbPanel h1 { margin: 0; font-size: 22px; font-weight: 700; }
+  #nbPanel .btn { width: 100%; }
+  #saveState { position: absolute; left: 16px; bottom: 16px; font-size: 12px; color: var(--muted); z-index: 2; }
+  #msg { position: absolute; left: 50%; bottom: 66px; transform: translateX(-50%); z-index: 5; font-size: 13px; max-width: 90%; text-align: center; padding: 6px 12px; border-radius: 12px; background: var(--surface); border: var(--ow) solid var(--outline); box-shadow: var(--shadow); }
+  #msg.bad { color: var(--danger); }
+  #empty { color: var(--muted); text-align: center; padding: 24px; }
+
+  /* typed page editor: the whole document, A4 wide, with a formatting bar */
+  #nbscreen.docediting #rail, #nbscreen.docediting #bottom, #nbscreen.docediting #saveState { display: none; }
+  #docEd { position: absolute; inset: 0; z-index: 2; background: var(--bg); display: flex; flex-direction: column; }
+  #docbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 10px 12px 6px 68px; min-height: 64px; }
+  #docbar .tb { width: auto; min-width: 40px; height: 40px; padding: 0 10px; font-size: 14px; border: var(--ow) solid var(--outline); background: var(--surface); }
+  #docbar .tb.sel { background: var(--sel-bg); color: var(--sel-text); }
+  #docbar select { min-height: 40px; border-radius: 10px; border: var(--ow) solid var(--outline); background: var(--surface); color: var(--text); font: inherit; font-size: 14px; padding: 0 8px; }
+  #docbar .info { font-size: 12px; color: var(--muted); margin-left: 6px; }
+  #docscroll { flex: 1; overflow: auto; padding: 8px 16px 40px; display: flex; justify-content: center; align-items: flex-start; }
+  #docsheet { background: #fff; color: #000; flex: none; width: calc(595px * var(--k, 1)); min-height: calc(842px * var(--k, 1)); padding: calc(56px * var(--k, 1)); border: 1.5px solid var(--outline); box-shadow: var(--shadow); outline: none; font-family: Roboto, system-ui, "Segoe UI", sans-serif; line-height: 1.2; counter-reset: n; }
+  #docsheet .p { position: relative; min-height: 1.2em; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #docsheet .p[data-list="number"] { counter-increment: n; }
+  #docsheet .p:not([data-list="number"]) { counter-reset: n; }
+  #docsheet .p[data-list="bullet"]::before { content: "\2022"; position: absolute; left: var(--ind, 0px); }
+  #docsheet .p[data-list="number"]::before { content: counter(n) "."; position: absolute; left: var(--ind, 0px); }
+  #docsheet .p[data-brk] { color: transparent; border-top: 1px dashed #999; margin: 6px 0; }
+  #docsheet .p[data-brk]::after { content: "Page break"; position: absolute; right: 0; top: 0; font-size: 11px; color: #999; }
+
+  /* sheets (New Notebook, New Folder) */
+  .scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; padding: 12px; }
+  .sheet { width: 100%; max-width: 480px; max-height: 92vh; overflow-y: auto; border-radius: 20px; padding: 16px; display: grid; gap: 12px; }
+  .sheethead { display: flex; align-items: center; justify-content: space-between; }
+  .sheethead b { font-size: 17px; }
+  .sheethead button { min-height: 44px; padding: 0 8px; font-weight: 600; color: var(--accent); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .paper { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; width: 76px; }
+  .paper canvas { width: 76px; height: 104px; border-radius: 8px; border: var(--ow) solid var(--outline); box-shadow: none; }
+  .paper.sel canvas { border: 3px solid var(--accent); } .paper.sel { color: var(--sel-text); }
+  .cc { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+  .cc i { width: 34px; height: 34px; border-radius: 50%; display: block; }
+  .cc.sel { box-shadow: inset 0 0 0 2px var(--accent); } .cc.sel i { border: 3px solid var(--surface); }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <form class="card surface" id="loginForm">
+    <h1 class="brand">S<i>Note</i></h1>
+    <div class="muted" style="font-size:14px">Sign in with the account you use in the SNote app to see and edit your notebooks here.</div>
+    <input class="field" id="email" type="email" placeholder="Email" autocomplete="username" required>
+    <input class="field" id="password" type="password" placeholder="Password" autocomplete="current-password" required>
+    <label class="muted" style="font-size:13px"><input id="stay" type="checkbox" checked style="margin-right:6px">Stay signed in on this browser</label>
+    <div class="err" id="loginErr"></div>
+    <button class="btn filled" type="submit" id="signInBtn">Sign in</button>
+    <div class="row"><button type="button" class="btn" id="resetBtn" style="flex:1">Forgot password</button><button type="button" class="btn" id="demoBtn" style="flex:1">Try the demo</button></div>
+  </form>
+</div>
+
+<div id="app" class="hidden">
+  <div id="demoBanner" class="hidden">Demo mode: sample notebooks, nothing is saved anywhere. Reload to reset.</div>
+  <div id="tabbar"></div>
+  <div id="content">
+    <div id="start">
+      <aside id="folders"></aside>
+      <div id="startMain">
+        <div id="startHead"><div class="t"><h1 id="startTitle">All Notebooks</h1><div class="muted" style="font-size:14px" id="startCount"></div></div><input class="field" id="search" placeholder="Search"></div>
+        <div id="startStatus"></div>
+        <div id="grid"></div>
+        <div id="compactBottom"></div>
+      </div>
+    </div>
+    <div id="nbscreen" class="hidden">
+      <div id="stage"></div>
+      <button class="fab surface" id="menuFab" title="Menu"><i></i></button>
+      <div id="rail">
+        <button class="tb" data-tool="pen">Pen</button><button class="tb" data-tool="marker">Marker</button>
+        <button class="tb" data-tool="eraser">Erase</button><button class="tb" data-tool="text">Text</button>
+        <span class="sep"></span>
+        <button class="tb" id="undo">Undo</button><button class="tb" id="redo">Redo</button>
+        <span class="sep"></span>
+        <button class="sw" data-col="0" title="Black"><i style="background:#000"></i></button>
+        <button class="sw" data-col="1" title="Blue"><i style="background:#007AFF"></i></button>
+        <button class="sw" data-col="2" title="Red"><i style="background:#FF3B30"></i></button>
+        <button class="tb red hidden" id="delBox">Del box</button>
+      </div>
+      <div id="bottom">
+        <div id="pill" class="surface"><button id="prev">&lsaquo;</button><span id="pageNo"></span><button id="next">&rsaquo;</button></div>
+        <button class="fab surface" id="plusFab" title="Pages">+</button>
+      </div>
+      <div id="plusMenu" class="menu surface hidden"><button id="addPage">Add page</button><button id="addTyped">Add typed page</button><button id="delPage" class="danger" style="color:var(--danger)">Delete this page</button></div>
+      <div id="saveState"></div>
+      <div id="msg" class="hidden"></div>
+      <div id="nbPanelWrap" class="hidden">
+        <div id="nbPanel" class="surface">
+          <h1>SNote</h1>
+          <div class="label">Appearance</div>
+          <div class="seg" id="themeSeg2"><button data-th="light">Light</button><button data-th="dark">Dark</button></div>
+          <div class="label">Page</div>
+          <button class="btn outlined" id="png">Save page as image</button>
+          <button class="btn" id="closePanel">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="sheetHost"></div>
+<input type="file" id="pdfFile" accept="application/pdf,.pdf" class="hidden">
+
+<script>
+"use strict";
+// ---- Firebase project (from the app's google-services.json). The web API key is public by design; the security rules protect the data.
+const API_KEY = "AIzaSyCOYKxOOicc3gD8AGUUn0Vi0n4IGGXQKvg";
+const PROJECT = "snote-d51ea";
+const FS = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
+
+const PW = 595, PH = 842;                    // A4 page units, same as the app
+const $ = id => document.getElementById(id);
+const COVERS = ["#007AFF", "#34C759", "#FF9500", "#AF52DE", "#FF3B30", "#30B0C7"];   // the app's cover colours
+const uuid = () => (crypto && crypto.randomUUID) ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3 | 8)).toString(16); });
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }, del(k) { try { localStorage.removeItem(k); } catch (e) {} } };
+
+// ------------------------------------------------------------------ appearance (Light / Dark, like the app)
+function applyTheme(t) {
+  if (t === "light" || t === "dark") { document.documentElement.dataset.theme = t; store.set("snote_theme", t); }
+  document.querySelectorAll("[data-th]").forEach(b => b.classList.toggle("sel", b.dataset.th === currentTheme()));
+}
+function currentTheme() { return document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); }
+{ const t = store.get("snote_theme"); if (t) document.documentElement.dataset.theme = t; }
+
+// ------------------------------------------------------------------ auth (Firebase Auth REST)
+let session = null;   // { idToken, refreshToken, uid, email, expires }
+let demo = false;
+
+async function authCall(endpoint, body) {
+  const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:${endpoint}?key=${API_KEY}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(friendly(j.error && j.error.message));
+  return j;
+}
+function friendly(code) {
+  code = String(code || "");
+  if (code.startsWith("INVALID_PASSWORD") || code.startsWith("INVALID_LOGIN_CREDENTIALS") || code.startsWith("EMAIL_NOT_FOUND")) return "Wrong email or password.";
+  if (code.startsWith("INVALID_EMAIL")) return "That email address doesn't look right.";
+  if (code.startsWith("TOO_MANY_ATTEMPTS")) return "Too many attempts. Wait a moment and try again.";
+  if (code.startsWith("OPERATION_NOT_ALLOWED")) return "Email sign-in is not switched on in the Firebase project.";
+  if (code.startsWith("API_KEY") || code.includes("referer") || code.includes("blocked")) return "This site is blocked by the API key's restrictions. " + code;
+  return code || "Something went wrong.";
+}
+function setSession(j) {
+  session = { idToken: j.idToken || j.id_token, refreshToken: j.refreshToken || j.refresh_token, uid: j.localId || j.user_id, email: j.email || (session && session.email),
+              expires: Date.now() + (parseInt(j.expiresIn || j.expires_in || "3600", 10) - 60) * 1000 };
+}
+async function refreshIfNeeded() {
+  if (!session || Date.now() < session.expires) return;
+  const r = await fetch(`https://securetoken.googleapis.com/v1/token?key=${API_KEY}`, {
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(session.refreshToken)}`,
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error("Session expired. Please sign in again.");
+  const email = session.email; setSession(j); session.email = email; remember();
+}
+function remember() { if ($("stay").checked && session && !demo) store.set("snote_session", JSON.stringify({ r: session.refreshToken, e: session.email })); }
+function forget() { store.del("snote_session"); }
+
+// ------------------------------------------------------------------ data layer: the real cloud (Firestore REST) or the in-memory demo
+function val(v) {
+  if (!v) return null;
+  if ("stringValue" in v) return v.stringValue;
+  if ("integerValue" in v) return Number(v.integerValue);
+  if ("doubleValue" in v) return v.doubleValue;
+  if ("booleanValue" in v) return v.booleanValue;
+  if ("bytesValue" in v) return v.bytesValue;     // base64
+  return null;
+}
+function fromDoc(doc) {
+  const o = { _id: doc.name.split("/").pop() };
+  for (const k in (doc.fields || {})) o[k] = val(doc.fields[k]);
+  return o;
+}
+function toFields(obj) {
+  const f = {};
+  for (const k in obj) {
+    if (k.startsWith("_")) continue;
+    const v = obj[k];
+    if (v === null || v === undefined) f[k] = { nullValue: null };
+    else if (typeof v === "string") f[k] = (k === "strokes" || k === "data") ? { bytesValue: v } : { stringValue: v };
+    else if (typeof v === "boolean") f[k] = { booleanValue: v };
+    else if (typeof v === "number") f[k] = Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  }
+  return f;
+}
+const cloud = {
+  async call(url, opts) {
+    await refreshIfNeeded();
+    const o = Object.assign({}, opts); o.headers = Object.assign({ Authorization: "Bearer " + session.idToken }, o.headers || {});
+    const r = await fetch(url, o);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const m = (j.error && j.error.message) || r.statusText;
+      if (r.status === 403) throw new Error("Access denied: check the Firestore rules are published. " + m);
+      throw new Error(m);
+    }
+    return j;
+  },
+  async list(col) {
+    const out = []; let token = "";
+    do {
+      const j = await this.call(`${FS}/users/${session.uid}/${col}?pageSize=300${token ? "&pageToken=" + encodeURIComponent(token) : ""}`);
+      (j.documents || []).forEach(d => out.push(fromDoc(d)));
+      token = j.nextPageToken || "";
+    } while (token);
+    return out;
+  },
+  async pagesOf(nbId) {
+    const j = await this.call(`${FS}/users/${session.uid}:runQuery`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "pages" }],
+        where: { fieldFilter: { field: { fieldPath: "notebookId" }, op: "EQUAL", value: { stringValue: nbId } } } } }),
+    });
+    return j.filter(x => x.document).map(x => fromDoc(x.document));
+  },
+  async chunksOf(nbId) {
+    const j = await this.call(`${FS}/users/${session.uid}:runQuery`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "pdfchunks" }],
+        where: { fieldFilter: { field: { fieldPath: "notebookId" }, op: "EQUAL", value: { stringValue: nbId } } } } }),
+    });
+    return j.filter(x => x.document).map(x => fromDoc(x.document)).sort((a, b) => a.index - b.index);
+  },
+  async get(col, id) {
+    try { return fromDoc(await this.call(`${FS}/users/${session.uid}/${col}/${encodeURIComponent(id)}`)); } catch (e) { return null; }
+  },
+  async put(col, id, obj) {
+    await this.call(`${FS}/users/${session.uid}/${col}/${encodeURIComponent(id)}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fields: toFields(obj) }),
+    });
+  },
+  async del(col, id) { await this.call(`${FS}/users/${session.uid}/${col}/${encodeURIComponent(id)}`, { method: "DELETE" }); },
+};
+const demoStore = { folders: {}, notebooks: {}, pages: {}, documents: {}, deleted: {}, pdfs: {}, pdfchunks: {} };
+const mem = {
+  async chunksOf(nbId) { return Object.keys(demoStore.pdfchunks).filter(id => demoStore.pdfchunks[id].notebookId === nbId).map(id => Object.assign({ _id: id }, demoStore.pdfchunks[id])).sort((a, b) => a.index - b.index); },
+  async list(col) { return Object.keys(demoStore[col]).map(id => Object.assign({ _id: id }, demoStore[col][id])); },
+  async pagesOf(nbId) { return Object.keys(demoStore.pages).filter(id => demoStore.pages[id].notebookId === nbId).map(id => Object.assign({ _id: id }, demoStore.pages[id])); },
+  async get(col, id) { const d = demoStore[col][id]; return d ? Object.assign({ _id: id }, d) : null; },
+  async put(col, id, obj) { const c = {}; for (const k in obj) if (!k.startsWith("_")) c[k] = obj[k]; demoStore[col][id] = c; },
+  async del(col, id) { delete demoStore[col][id]; },
+};
+let backend = cloud;
+
+// ------------------------------------------------------------------ ink: the app's binary stroke format (big-endian)
+const TOOLS = ["PEN", "MARKER", "ERASER", "TEXT"];
+function b64ToBytes(b64) { const bin = atob(b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return u8; }
+function bytesToB64(u8) { let s = ""; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); }
+function decodeStrokes(b64) {
+  if (!b64) return [];
+  try {
+    const u8 = b64ToBytes(b64), dv = new DataView(u8.buffer); let p = 0;
+    if (dv.getUint8(p++) !== 1) return [];
+    const count = dv.getInt32(p); p += 4;
+    const out = [];
+    for (let s = 0; s < count; s++) {
+      const tool = TOOLS[dv.getUint8(p++)]; const color = dv.getInt32(p); p += 4;
+      const width = dv.getFloat32(p); p += 4; const m = dv.getInt32(p); p += 4;
+      const pts = new Float32Array(m * 4);
+      for (let i = 0; i < m * 4; i++) { pts[i] = dv.getFloat32(p); p += 4; }
+      out.push({ tool, color, width, n: m, pts });
+    }
+    return out;
+  } catch (e) { return []; }
+}
+function encodeStrokes(strokes) {
+  let size = 5; strokes.forEach(s => size += 13 + s.n * 16);
+  const dv = new DataView(new ArrayBuffer(size)); let p = 0;
+  dv.setUint8(p++, 1); dv.setInt32(p, strokes.length); p += 4;
+  strokes.forEach(s => {
+    dv.setUint8(p++, Math.max(0, TOOLS.indexOf(s.tool))); dv.setInt32(p, s.color | 0); p += 4;
+    dv.setFloat32(p, s.width); p += 4; dv.setInt32(p, s.n); p += 4;
+    for (let i = 0; i < s.n * 4; i++) { dv.setFloat32(p, s.pts[i]); p += 4; }
+  });
+  return bytesToB64(new Uint8Array(dv.buffer));
+}
+function argb(c, alpha) {
+  c = c >>> 0;
+  const a = ((c >>> 24) & 255) / 255, r = (c >>> 16) & 255, g = (c >>> 8) & 255, b = c & 255;
+  return `rgba(${r},${g},${b},${alpha != null ? alpha : a})`;
+}
+function pressureFactor(p) { const q = p <= 0 ? 0.5 : Math.min(1, Math.max(0, p)); return 0.5 + q * 0.9; }
+function drawStroke(ctx, s) {
+  if (s.tool !== "PEN" && s.tool !== "MARKER") return;
+  const n = s.n, P = s.pts; if (!n) return;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  if (s.tool === "MARKER") {
+    ctx.strokeStyle = argb(s.color, 0.4); ctx.lineWidth = s.width;
+    ctx.beginPath(); ctx.moveTo(P[0], P[1]); if (n === 1) ctx.lineTo(P[0] + 0.01, P[1]);
+    for (let i = 1; i < n; i++) ctx.lineTo(P[i * 4], P[i * 4 + 1]);
+    ctx.stroke(); return;
+  }
+  ctx.strokeStyle = argb(s.color, 1); ctx.fillStyle = ctx.strokeStyle;
+  if (n === 1) { ctx.beginPath(); ctx.arc(P[0], P[1], s.width * pressureFactor(P[2]) / 2, 0, 7); ctx.fill(); return; }
+  for (let i = 1; i < n; i++) {
+    ctx.lineWidth = s.width * pressureFactor((P[(i - 1) * 4 + 2] + P[i * 4 + 2]) / 2);
+    ctx.beginPath(); ctx.moveTo(P[(i - 1) * 4], P[(i - 1) * 4 + 1]); ctx.lineTo(P[i * 4], P[i * 4 + 1]); ctx.stroke();
+  }
+}
+function strokeHit(s, x, y, r) {
+  const P = s.pts, reach = r + s.width / 2;
+  for (let i = 0; i < s.n; i++) {
+    const ax = P[i * 4], ay = P[i * 4 + 1];
+    if (i === s.n - 1 || s.n === 1) { if (Math.hypot(ax - x, ay - y) <= reach) return true; continue; }
+    const bx = P[(i + 1) * 4], by = P[(i + 1) * 4 + 1], dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    let t = l2 ? ((x - ax) * dx + (y - ay) * dy) / l2 : 0; t = Math.max(0, Math.min(1, t));
+    if (Math.hypot(ax + t * dx - x, ay + t * dy - y) <= reach) return true;
+  }
+  return false;
+}
+
+// ------------------------------------------------------------------ paper
+function drawPaper(ctx, style) {
+  if (!style || style === "BLANK") return;
+  ctx.strokeStyle = "#C7D3E6"; ctx.lineWidth = 0.6;
+  if (style === "RULED") { for (let y = 48; y < PH; y += 24) line(ctx, 0, y, PW, y); }
+  else if (style === "GRID") { for (let y = 21.5; y < PH; y += 21.5) line(ctx, 0, y, PW, y); for (let x = 21.5; x < PW; x += 21.5) line(ctx, x, 0, x, PH); }
+  else if (style === "DOT") { ctx.fillStyle = "#C7D3E6"; for (let y = 21.5; y < PH; y += 21.5) for (let x = 21.5; x < PW; x += 21.5) { ctx.beginPath(); ctx.arc(x, y, 0.8, 0, 7); ctx.fill(); } }
+}
+function line(ctx, x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+
+// ------------------------------------------------------------------ rich text layout (an approximation of the app's layout)
+const FAMILY = { sans: 'Roboto, system-ui, "Segoe UI", sans-serif', serif: 'Georgia, "Times New Roman", serif', mono: 'ui-monospace, Consolas, monospace' };
+const INDENT = 24, LIST_MARGIN = 20, BREAK = "​";
+let measureCtx = document.createElement("canvas").getContext("2d");
+function fontOf(r) { return `${r.italic ? "italic " : ""}${r.bold ? "bold " : ""}${r.size || 14}px ${FAMILY[r.font] || FAMILY.sans}`; }
+function parseContent(json) {
+  try {
+    const o = JSON.parse(json);
+    return { spacing: o.spacing || 1.2, paras: (o.paragraphs && o.paragraphs.length ? o.paragraphs : [{ runs: [] }]) };
+  } catch (e) { return { spacing: 1.2, paras: [{ runs: [] }] }; }
+}
+function contentJson(paras, spacing) { return JSON.stringify({ spacing, paragraphs: paras }); }
+function layout(paras, spacing, width) {
+  const lines = []; let y = 0; const nums = {};
+  paras.forEach(p => {
+    const runs = (p.runs || []);
+    const text = runs.map(r => r.text || "").join("");
+    const indent = (p.indent || 0) * INDENT + (p.list && p.list !== "none" ? LIST_MARGIN : 0);
+    const avail = Math.max(20, width - indent);
+    let label = "";
+    if (p.list === "bullet") label = "•";
+    else if (p.list === "number") { const k = "i" + (p.indent || 0); nums[k] = (nums[k] || 0) + 1; label = nums[k] + "."; }
+    else { for (const k in nums) delete nums[k]; }
+    if (text === BREAK) { lines.push({ top: y, h: 0, brk: true, items: [] }); return; }
+    const words = [];
+    runs.forEach(r => { (r.text || "").split(/(\s+)/).forEach(w => { if (w !== "") words.push({ t: w, r }); }); });
+    let cur = [], curW = 0, first = true;
+    const flush = () => {
+      let ms = 0; cur.forEach(it => ms = Math.max(ms, it.r.size || 14)); if (!ms) ms = 14;
+      const h = ms * 1.17 * spacing;
+      const total = cur.reduce((a, it) => a + it.w, 0);
+      const off = p.align === "center" ? (avail - total) / 2 : p.align === "right" ? avail - total : 0;
+      let x = indent + Math.max(0, off);
+      cur.forEach(it => { it.x = x; x += it.w; });
+      lines.push({ top: y, h, ms, items: cur, label: first ? label : "", labelX: (p.indent || 0) * INDENT });
+      y += h; cur = []; curW = 0; first = false;
+    };
+    if (!words.length) { const h = 14 * 1.17 * spacing; lines.push({ top: y, h, ms: 14, items: [], label, labelX: (p.indent || 0) * INDENT }); y += h; return; }
+    words.forEach(w => {
+      measureCtx.font = fontOf(w.r);
+      const ww = measureCtx.measureText(w.t).width;
+      const space = /^\s+$/.test(w.t);
+      if (!space && curW + ww > avail && cur.length) flush();
+      if (space && !cur.length) return;
+      cur.push({ t: w.t, r: w.r, w: ww }); curW += ww;
+    });
+    if (cur.length) flush();
+  });
+  return { lines, height: y };
+}
+function drawLines(ctx, lines, ox, oy, fromTop, toBottom) {
+  ctx.textBaseline = "alphabetic";
+  for (const ln of lines) {
+    if (ln.brk) continue;
+    if (fromTop != null && (ln.top < fromTop - 0.01 || ln.top + ln.h > toBottom + 0.01)) continue;
+    const base = oy + ln.top - (fromTop || 0) + ln.h - ln.ms * 0.27;
+    if (ln.label) { ctx.font = fontOf({ size: 14 }); ctx.fillStyle = "#000"; ctx.fillText(ln.label, ox + ln.labelX, base); }
+    for (const it of ln.items) {
+      const r = it.r; ctx.font = fontOf(r);
+      if (r.highlight) { ctx.fillStyle = argb(r.highlight); ctx.fillRect(ox + it.x, base - ln.ms, it.w, ln.ms * 1.2); }
+      ctx.fillStyle = r.color ? argb(r.color) : "#000";
+      ctx.fillText(it.t, ox + it.x, base);
+      if (r.underline) ctx.fillRect(ox + it.x, base + 1.5, it.w, 0.8);
+      if (r.strike) ctx.fillRect(ox + it.x, base - (r.size || 14) * 0.3, it.w, 0.8);
+    }
+  }
+}
+function paginate(L) {
+  const pages = [[]]; let top = 0;
+  for (const ln of L.lines) {
+    if (ln.brk) { pages.push([]); top = 0; continue; }
+    if (top + ln.h > 730 && pages[pages.length - 1].length) { pages.push([]); top = 0; }
+    pages[pages.length - 1].push(ln); top += ln.h;
+  }
+  return pages;
+}
+function boxToText(b) { return parseContent(b.content).paras.map(p => (p.runs || []).map(r => r.text || "").join("")).join("\n"); }
+function textToContent(oldJson, text) {
+  const old = parseContent(oldJson), lines = text.split("\n"), out = [];
+  lines.forEach((ln, i) => {
+    const src = old.paras[Math.min(i, old.paras.length - 1)] || { runs: [] };
+    const srcText = (src.runs || []).map(r => r.text || "").join("");
+    if (i < old.paras.length && srcText === ln) { out.push(src); return; }
+    const base = Object.assign({}, (src.runs && src.runs[0]) || { size: 14 }); base.text = ln;
+    out.push({ style: src.style || "body", align: src.align || "left", list: src.list || "none", indent: src.indent || 0, runs: ln ? [base] : [] });
+  });
+  return contentJson(out, old.spacing);
+}
+function boxHeight(b) { const c = parseContent(b.content); return Math.max(b.h || 0, layout(c.paras, c.spacing, Math.max(20, b.w - 8)).height + 8); }
+
+// ------------------------------------------------------------------ pages in memory
+const typedCache = {};          // documentId -> its text split into pages (lines)
+const docModels = {};           // documentId -> { id, paras, spacing, content }
+function prepPage(p) {
+  p._strokes = decodeStrokes(p.strokes);
+  try { p._boxes = JSON.parse(p.boxes || "[]"); } catch (e) { p._boxes = []; }
+  p._undo = []; p._redo = [];
+  return p;
+}
+function pageDoc(p) {
+  return { notebookId: p.notebookId, index: p.index, type: p.type, documentId: p.documentId || null, pdfPage: p.pdfPage == null ? -1 : p.pdfPage,
+           updatedAt: p.updatedAt, boxes: JSON.stringify(p._boxes || []), strokes: encodeStrokes(p._strokes || []) };
+}
+function renderPage(ctx, nb, pg, scale) {
+  ctx.save(); ctx.scale(scale, scale);
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, PW, PH);
+  if (pg.type === "TYPED") {
+    const pages = typedCache[pg.documentId] || [];
+    const lines = pages[pg._run] || [];
+    if (lines.length) {
+      const t0 = lines[0].top, t1 = lines[lines.length - 1].top + lines[lines.length - 1].h;
+      drawLines(ctx, lines, 56, 56, t0, t1);
+    }
+  } else {
+    if (pg.type === "PDF") {
+      const bmp = pdfBitmaps[pdfKey(pg)];
+      if (bmp) ctx.drawImage(bmp, 0, 0, PW, PH);
+      else {
+        ctx.fillStyle = "#f4f4f6"; ctx.fillRect(0, 0, PW, PH);
+        ctx.fillStyle = "#8e8e93"; ctx.font = "16px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("PDF page " + ((pg.pdfPage || 0) + 1), PW / 2, PH / 2 - 10);
+        ctx.font = "12px sans-serif"; ctx.fillText(pdfErrors[pg.notebookId] || "Loading the PDF…", PW / 2, PH / 2 + 12);
+        ctx.textAlign = "left";
+      }
+    } else drawPaper(ctx, nb.paperStyle);
+    (pg._boxes || []).slice().sort((a, b) => a.z - b.z).forEach(b => {
+      if (b.id === editingBoxId) return;
+      const c = parseContent(b.content); const L = layout(c.paras, c.spacing, Math.max(20, b.w - 8));
+      drawLines(ctx, L.lines, b.x + 4, b.y + 4, null, null);
+    });
+  }
+  (pg._strokes || []).forEach(s => drawStroke(ctx, s));
+  ctx.restore();
+}
+
+// ------------------------------------------------------------------ imported PDFs (drawn with pdf.js, loaded only when a PDF is opened)
+const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+let pdfLibPromise = null;
+function loadPdfLib() {
+  if (window.pdfjsLib) { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js"; return Promise.resolve(window.pdfjsLib); }
+  if (!pdfLibPromise) pdfLibPromise = new Promise((res, rej) => {
+    const s = document.createElement("script"); s.src = PDFJS + "pdf.min.js";
+    s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js"; res(window.pdfjsLib); };
+    s.onerror = () => { pdfLibPromise = null; rej(new Error("Could not load the PDF viewer library (check the connection)")); };
+    document.head.appendChild(s);
+  });
+  return pdfLibPromise;
+}
+const pdfDocs = {}, pdfBitmaps = {}, pdfErrors = {}, pdfOrder = [];
+const pdfKey = pg => pg.notebookId + ":" + (pg.pdfPage || 0);
+/** The stored file of an imported PDF, opened for drawing. */
+function getPdf(nbId) {
+  if (!pdfDocs[nbId]) pdfDocs[nbId] = (async () => {
+    const lib = await loadPdfLib();
+    const meta = await backend.get("pdfs", nbId);
+    if (!meta) throw new Error("The PDF file is not in the cloud yet. Open the app and let it sync.");
+    const chunks = await backend.chunksOf(nbId);
+    if (chunks.length < meta.chunks) throw new Error("The PDF is still uploading. Try again in a moment.");
+    const parts = chunks.map(c => b64ToBytes(c.data)); const bytes = new Uint8Array(parts.reduce((a, p) => a + p.length, 0)); let o = 0;
+    parts.forEach(p => { bytes.set(p, o); o += p.length; });
+    return lib.getDocument({ data: bytes }).promise;
+  })().catch(e => { delete pdfDocs[nbId]; throw e; });
+  return pdfDocs[nbId];
+}
+/** One PDF page fitted onto the A4 page (centred, white around it), like the app does. */
+async function ensurePdfBitmap(pg) {
+  const key = pdfKey(pg); if (pdfBitmaps[key]) return pdfBitmaps[key];
+  try {
+    const pdf = await getPdf(pg.notebookId), page = await pdf.getPage((pg.pdfPage || 0) + 1);
+    const v1 = page.getViewport({ scale: 1 }), s = Math.min(PW / v1.width, PH / v1.height), R = 2.5, vp = page.getViewport({ scale: s * R });
+    const c = document.createElement("canvas"); c.width = Math.ceil(PW * R); c.height = Math.ceil(PH * R);
+    const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: g, viewport: vp, transform: [1, 0, 0, 1, (c.width - vp.width) / 2, (c.height - vp.height) / 2] }).promise;
+    pdfBitmaps[key] = c; pdfOrder.push(key); while (pdfOrder.length > 6) delete pdfBitmaps[pdfOrder.shift()];
+    delete pdfErrors[pg.notebookId]; return c;
+  } catch (e) { pdfErrors[pg.notebookId] = e.message; return null; }
+}
+
+// ------------------------------------------------------------------ state
+let folders = [], notebooks = [], pages = [], idx = 0;
+let tabs = [];                    // open notebook ids (Start is always first and not listed)
+let active = "start";             // "start" or a notebook id
+let selFolder = "all", query = "", confirmDel = null;
+let current = null;               // the notebook shown on the notebook screen
+let tool = null;                  // null = just looking; pen / marker / eraser / text = editing
+let edit = false, colIdx = 0;
+const INK_COLORS = [0xFF000000 | 0, 0xFF007AFF | 0, 0xFFFF3B30 | 0], PEN_WIDTH = 3;   // the app's ink colours and medium pen width
+let editingBoxId = null, selectedBox = null, cv = null, scaleCss = 1;
+const dirty = new Set(); let saveTimer = null, saving = false;
+
+function toast(t, bad) { const m = $("msg"); if (!t) { m.classList.add("hidden"); return; } m.textContent = t; m.classList.toggle("bad", !!bad); m.classList.remove("hidden"); if (!bad) setTimeout(() => { if (m.textContent === t) m.classList.add("hidden"); }, 2500); }
+function startStatus(t) { $("startStatus").textContent = t || ""; }
+function saveState(t) { $("saveState").textContent = t || ""; }
+
+// ------------------------------------------------------------------ saving
+function markDirty(p) { dirty.add(p); saveState("Unsaved changes"); clearTimeout(saveTimer); saveTimer = setTimeout(flush, 1200); }
+async function flush() {
+  clearTimeout(saveTimer);
+  if (saving) { saveTimer = setTimeout(flush, 500); return; }
+  if (!dirty.size) return;
+  saving = true; saveState("Saving…");
+  try {
+    for (const p of [...dirty]) { p.updatedAt = Date.now(); await backend.put("pages", p.id, pageDoc(p)); dirty.delete(p); }
+    saveState("Saved " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  } catch (e) { saveState("Not saved"); toast("Could not save: " + e.message, true); }
+  saving = false;
+}
+async function waitSaved() { await flush(); while (saving) await new Promise(r => setTimeout(r, 50)); }
+window.addEventListener("beforeunload", e => { if (dirty.size && !demo) { flush(); e.preventDefault(); e.returnValue = ""; } });
+
+// ------------------------------------------------------------------ page, notebook and folder operations (same shapes the app syncs)
+async function addPageAfter(afterIdx, opts) {
+  opts = opts || {};
+  await waitSaved();
+  const now = Date.now();
+  for (const p of pages) if (p.index > afterIdx) { p.index += 1; p.updatedAt = now; await backend.put("pages", p.id, pageDoc(p)); }
+  const np = prepPage({ id: uuid(), notebookId: current._id, index: afterIdx + 1, type: opts.type || "INK", documentId: opts.documentId || null, pdfPage: -1, updatedAt: now, boxes: "[]", strokes: null });
+  await backend.put("pages", np.id, pageDoc(np));
+  pages.push(np); pages.sort((a, b) => a.index - b.index);
+  return np;
+}
+async function deletePageAt(i) {
+  await waitSaved();
+  const p = pages[i], now = Date.now();
+  await backend.put("deleted", p.id, { kind: "page", updatedAt: now });
+  await backend.del("pages", p.id);
+  pages.splice(i, 1);
+  for (const q of pages) if (q.index > p.index) { q.index -= 1; q.updatedAt = now; await backend.put("pages", q.id, pageDoc(q)); }
+  // a typed document with no pages left goes with its last page
+  if (p.type === "TYPED" && p.documentId && !pages.some(q => q.documentId === p.documentId)) {
+    await backend.put("deleted", p.documentId, { kind: "document", updatedAt: now });
+    await backend.del("documents", p.documentId); delete docModels[p.documentId]; delete typedCache[p.documentId];
+  }
+  assignRuns();
+}
+function assignRuns() {
+  const seen = {};
+  pages.forEach(p => { if (p.type === "TYPED") { seen[p.documentId] = (seen[p.documentId] || 0); p._run = seen[p.documentId]++; } });
+}
+async function createNotebook(title, paper, cover, folderId, id) {
+  const now = Date.now(); id = id || uuid();
+  const nb = { folderId: folderId || null, title: title.trim() || "Untitled", cover, paperStyle: paper, createdAt: now, updatedAt: now, lastOpenedAt: now };
+  await backend.put("notebooks", id, nb);
+  const p = prepPage({ id: uuid(), notebookId: id, index: 0, type: "INK", documentId: null, pdfPage: -1, updatedAt: now, boxes: "[]", strokes: null });
+  await backend.put("pages", p.id, pageDoc(p));
+  return Object.assign({ _id: id }, nb);
+}
+/** A typed page: a new document (empty) and its first page, after page afterIdx. */
+const EMPTY_PARA = () => ({ style: "body", align: "left", list: "none", indent: 0, runs: [] });
+async function addTypedPageAfter(afterIdx) {
+  const docId = uuid(), paras = [EMPTY_PARA()], content = contentJson(paras, 1.2);
+  await backend.put("documents", docId, { notebookId: current._id, content, updatedAt: Date.now() });
+  docModels[docId] = { id: docId, paras, spacing: 1.2, content };
+  typedCache[docId] = paginate(layout(paras, 1.2, 483));
+  const np = await addPageAfter(afterIdx, { type: "TYPED", documentId: docId });
+  assignRuns(); return np;
+}
+/** After the text of a document changed: page count follows the text, like in the app. Pages holding ink are never removed. */
+async function syncDocPages(docId) {
+  const m = docModels[docId]; if (!m) return;
+  const pg = paginate(layout(m.paras, m.spacing, 483)); typedCache[docId] = pg;
+  const want = Math.max(1, pg.length);
+  let rows = pages.filter(p => p.documentId === docId).sort((a, b) => a.index - b.index);
+  while (rows.length < want) {
+    const after = pages.indexOf(rows[rows.length - 1]);
+    const np = await addPageAfter(pages[after].index, { type: "TYPED", documentId: docId });
+    assignRuns(); rows = pages.filter(p => p.documentId === docId).sort((a, b) => a.index - b.index);
+  }
+  while (rows.length > want) {
+    const last = rows[rows.length - 1];
+    if ((last._strokes && last._strokes.length) || (last._boxes && last._boxes.length)) break;
+    await deletePageAt(pages.indexOf(last)); rows = pages.filter(p => p.documentId === docId).sort((a, b) => a.index - b.index);
+    if (!rows.length) break;
+  }
+  assignRuns();
+}
+async function createFolder(name) {
+  const id = uuid(), order = Math.max(-1, ...folders.map(f => f.sortOrder || 0)) + 1;
+  await backend.put("folders", id, { name: name.trim(), sortOrder: order, updatedAt: Date.now() });
+  return id;
+}
+async function deleteNotebookCascade(nb) {
+  const now = Date.now();
+  const ps = await backend.pagesOf(nb._id);
+  const docIds = [...new Set(ps.map(p => p.documentId).filter(Boolean))];
+  await backend.put("deleted", nb._id, { kind: "notebook", updatedAt: now });
+  for (const p of ps) await backend.put("deleted", p._id, { kind: "page", updatedAt: now });
+  for (const d of docIds) await backend.put("deleted", d, { kind: "document", updatedAt: now });
+  for (const p of ps) await backend.del("pages", p._id);
+  for (const d of docIds) await backend.del("documents", d);
+  // an imported PDF's stored file goes too
+  for (const c of await backend.chunksOf(nb._id)) await backend.del("pdfchunks", c._id);
+  await backend.del("pdfs", nb._id);
+  await backend.del("notebooks", nb._id);
+}
+/** Import: the PDF file is stored in 600 KB pieces (a Firestore document is limited to 1 MB); the small record that lists it is written last. */
+const CHUNK = 600000, MAX_PDF = 25 * 1024 * 1024;
+async function uploadPdf(nbId, bytes, name, onProgress) {
+  const n = Math.ceil(bytes.length / CHUNK), now = Date.now();
+  for (let i = 0; i < n; i++) {
+    await backend.put("pdfchunks", nbId + "_" + i, { notebookId: nbId, index: i, data: bytesToB64(bytes.subarray(i * CHUNK, (i + 1) * CHUNK)), updatedAt: now });
+    if (onProgress) onProgress((i + 1) / n);
+  }
+  await backend.put("pdfs", nbId, { name, size: bytes.length, chunks: n, updatedAt: now });
+}
+async function createPdfNotebook(id, title, folderId, pageCount) {
+  const now = Date.now();
+  await backend.put("notebooks", id, { folderId: folderId || null, title: title.trim() || "Untitled PDF", cover: 0, paperStyle: "BLANK", createdAt: now, updatedAt: now, lastOpenedAt: now });
+  for (let s = 0; s < pageCount; s += 8) {
+    await Promise.all(Array.from({ length: Math.min(8, pageCount - s) }, (_, k) => {
+      const i = s + k, p = prepPage({ id: uuid(), notebookId: id, index: i, type: "PDF", documentId: null, pdfPage: i, updatedAt: now, boxes: "[]", strokes: null });
+      return backend.put("pages", p.id, pageDoc(p));
+    }));
+  }
+}
+
+// ------------------------------------------------------------------ tab bar
+function renderTabs() {
+  const bar = $("tabbar"); bar.innerHTML = "";
+  const items = [{ id: "start", title: "Start" }].concat(tabs.map(id => { const n = notebooks.find(x => x._id === id); return n ? { id, title: n.title || "Untitled", cover: n.cover || 0 } : null; }).filter(Boolean));
+  items.forEach((it, i) => {
+    const sel = it.id === active, d = document.createElement("div");
+    d.className = "tab" + (sel ? " sel" : "") + (it.id === "start" ? " start" : "");
+    const icon = it.id === "start"
+      ? '<svg class="ti" viewBox="0 0 16 16"><path d="M8 1 15 8h-2v6H3V8H1z" fill="var(--accent)"/></svg>'
+      : `<span class="ti" style="background:${COVERS[it.cover % COVERS.length]}"></span>`;
+    d.innerHTML = icon + '<span class="tt"></span>' + (it.id === "start" ? "" : '<button class="x" title="Close">×</button>');
+    d.querySelector(".tt").textContent = it.title;
+    d.onclick = () => selectTab(it.id);
+    const x = d.querySelector(".x"); if (x) x.onclick = e => { e.stopPropagation(); closeTab(it.id); };
+    bar.appendChild(d);
+    const next = items[i + 1];
+    if (i < items.length - 1) {
+      if (!sel && !(next && next.id === active)) { const s = document.createElement("span"); s.className = "tabsep"; bar.appendChild(s); }
+      else { const s = document.createElement("span"); s.style.width = "var(--ow)"; s.style.flex = "none"; bar.appendChild(s); }
+    }
+  });
+  const plus = document.createElement("button"); plus.id = "newTab"; plus.innerHTML = "<span>+</span>"; plus.onclick = () => selectTab("start"); bar.appendChild(plus);
+}
+async function selectTab(id) {
+  if (docEd) await closeDocEditor();
+  await waitSaved(); closeBoxEditor(true);
+  active = id;
+  if (id === "start") { current = null; showStart(); return; }
+  const nb = notebooks.find(n => n._id === id); if (!nb) { showStart(); return; }
+  await openNotebook(nb, current && current._id === id ? idx : 0);
+}
+async function closeTab(id) {
+  if (docEd) await closeDocEditor();
+  await waitSaved();
+  tabs = tabs.filter(t => t !== id); store.set("snote_tabs", JSON.stringify(tabs));
+  if (active === id) { active = "start"; current = null; showStart(); } else renderTabs();
+}
+
+// ------------------------------------------------------------------ Start page: folders, notebook grid, account
+function showStart() {
+  $("nbscreen").classList.add("hidden"); $("start").classList.remove("hidden"); $("nbPanelWrap").classList.add("hidden");
+  renderTabs(); renderStart();
+}
+function accountHTML() {
+  return `<div class="label">Appearance</div><div class="seg"><button data-th="light">Light</button><button data-th="dark">Dark</button></div>
+          <div class="label">Account</div><div class="acct"><div class="em" id="acctEmail"></div><button class="btn outlined" id="refreshBtn">Refresh</button><button class="btn outlined" id="signOutBtn">Sign out</button></div>`;
+}
+function wireAccount(root) {
+  root.querySelectorAll("[data-th]").forEach(b => b.onclick = () => applyTheme(b.dataset.th));
+  const em = root.querySelector("#acctEmail"); if (em) em.textContent = (session && session.email) || "";
+  const r = root.querySelector("#refreshBtn"); if (r) r.onclick = async () => { await waitSaved(); loadLibrary(); };
+  const so = root.querySelector("#signOutBtn"); if (so) so.onclick = signOut;
+}
+function renderStart() {
+  const side = $("folders"); side.innerHTML = "<h2>Folders</h2>";
+  const count = fid => notebooks.filter(n => n.folderId === fid).length;
+  const item = (label, n, sel, onClick) => {
+    const b = document.createElement("button"); b.className = "sbitem" + (sel ? " sel" : "");
+    b.innerHTML = '<span></span>' + (n != null ? '<span class="n"></span>' : ""); b.firstChild.textContent = label; if (n != null) b.lastChild.textContent = n;
+    b.onclick = onClick; side.appendChild(b);
+  };
+  item("All", notebooks.length, selFolder === "all", () => { selFolder = "all"; renderStart(); });
+  folders.slice().sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).forEach(f => item(f.name, count(f._id), selFolder === f._id, () => { selFolder = f._id; renderStart(); }));
+  item("+ New Folder", null, false, () => newFolderSheet());
+  const sp = document.createElement("div"); sp.id = "folderSpacer"; side.appendChild(sp);
+  const acc = document.createElement("div"); acc.innerHTML = accountHTML(); side.appendChild(acc); wireAccount(acc);
+  const cb = $("compactBottom"); cb.innerHTML = accountHTML(); wireAccount(cb);
+  document.querySelectorAll("[data-th]").forEach(b => b.classList.toggle("sel", b.dataset.th === currentTheme()));
+
+  if (selFolder !== "all" && !folders.some(f => f._id === selFolder)) selFolder = "all";
+  const q = query.trim().toLowerCase();
+  const shown = notebooks.filter(n => (selFolder === "all" || n.folderId === selFolder) && (n.title || "").toLowerCase().includes(q));
+  const fname = selFolder === "all" ? "All Notebooks" : ((folders.find(f => f._id === selFolder) || {}).name || "All Notebooks");
+  $("startTitle").textContent = fname; $("startCount").textContent = shown.length === 1 ? "1 notebook" : shown.length + " notebooks";
+  const grid = $("grid"); grid.innerHTML = "";
+  shown.forEach(n => {
+    const d = document.createElement("div"); d.className = "nbitem";
+    d.innerHTML = `<div class="cover" style="background:${COVERS[(n.cover || 0) % COVERS.length]}"><div class="ct"></div></div><div class="sub"></div><button class="del"></button>`;
+    d.querySelector(".ct").textContent = n.title || "Untitled";
+    d.querySelector(".sub").textContent = n.lastOpenedAt ? "Opened " + new Date(n.lastOpenedAt).toLocaleDateString([], { day: "numeric", month: "short" }) : "";
+    d.querySelector(".cover").onclick = () => openTab(n);
+    const del = d.querySelector(".del"); del.textContent = confirmDel === n._id ? "Tap again" : "Delete";
+    del.onclick = async () => {
+      if (confirmDel !== n._id) { confirmDel = n._id; renderStart(); return; }
+      confirmDel = null;
+      try { await deleteNotebookCascade(n); tabs = tabs.filter(t => t !== n._id); await loadLibrary(); } catch (e) { toast("Could not delete: " + e.message, true); }
+    };
+    grid.appendChild(d);
+  });
+  const nt = document.createElement("div"); nt.innerHTML = '<div class="tile surface">+</div><div class="tilelabel">New Notebook</div>'; nt.style.width = "96px";
+  nt.firstChild.style.cursor = "pointer"; nt.firstChild.onclick = () => newNotebookSheet(); grid.appendChild(nt);
+  const ip = document.createElement("div"); ip.innerHTML = '<div class="tile surface" style="font-size:22px">PDF</div><div class="tilelabel">Import PDF</div>'; ip.style.width = "96px";
+  ip.firstChild.style.cursor = "pointer"; ip.firstChild.onclick = () => $("pdfFile").click(); grid.appendChild(ip);
+}
+$("search").oninput = e => { query = e.target.value; renderStart(); };
+
+async function loadLibrary() {
+  startStatus("Loading notebooks…");
+  try {
+    [folders, notebooks] = await Promise.all([backend.list("folders"), backend.list("notebooks")]);
+    notebooks.sort((a, b) => (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0));
+    const valid = new Set(notebooks.map(n => n._id)); tabs = tabs.filter(t => valid.has(t));
+    startStatus(notebooks.length ? "" : "No notebooks yet. Create one here, or sign in to the app and let it sync.");
+    if (active !== "start" && !valid.has(active)) { active = "start"; current = null; }
+    if (active === "start") showStart(); else { renderTabs(); if (current) openNotebook(notebooks.find(n => n._id === active), idx, true); }
+  } catch (e) { startStatus("Could not load: " + e.message); }
+}
+
+// ------------------------------------------------------------------ sheets: New Notebook, New Folder
+function sheet(title, createLabel, build, onCreate) {
+  const host = $("sheetHost"); host.innerHTML = "";
+  const scrim = document.createElement("div"); scrim.className = "scrim";
+  const sh = document.createElement("div"); sh.className = "sheet surface";
+  sh.innerHTML = `<div class="sheethead"><button id="shCancel">Cancel</button><b></b><button id="shCreate"></button></div><div class="body" style="display:grid;gap:12px"></div>`;
+  sh.querySelector("b").textContent = title; sh.querySelector("#shCreate").textContent = createLabel;
+  const close = () => { host.innerHTML = ""; };
+  sh.querySelector("#shCancel").onclick = close;
+  scrim.onclick = e => { if (e.target === scrim) close(); };
+  const body = sh.querySelector(".body"); const get = build(body);
+  sh.querySelector("#shCreate").onclick = async () => { const v = get(); if (v === null) return; close(); await onCreate(v); };
+  scrim.appendChild(sh); host.appendChild(scrim);
+  const first = sh.querySelector("input"); if (first) first.focus();
+}
+function newFolderSheet() {
+  sheet("New Folder", "Create", body => {
+    body.innerHTML = '<input class="field" id="fname" placeholder="Folder name">';
+    return () => { const v = body.querySelector("#fname").value.trim(); return v ? v : null; };
+  }, async name => {
+    try { const id = await createFolder(name); await loadLibrary(); selFolder = id; renderStart(); } catch (e) { toast("Could not create the folder: " + e.message, true); }
+  });
+}
+function paperPreview(style) {
+  const c = document.createElement("canvas"); c.width = 152; c.height = 208; const g = c.getContext("2d");
+  g.fillStyle = "#fff"; g.fillRect(0, 0, 152, 208); g.strokeStyle = "#C7D3E6"; g.fillStyle = "#C7D3E6"; g.lineWidth = 1.5;
+  const gap = 18;
+  if (style === "RULED") for (let y = gap * 2; y < 208; y += gap) line(g, 0, y, 152, y);
+  else if (style === "GRID") { for (let y = gap; y < 208; y += gap) line(g, 0, y, 152, y); for (let x = gap; x < 152; x += gap) line(g, x, 0, x, 208); }
+  else if (style === "DOT") for (let y = gap; y < 208; y += gap) for (let x = gap; x < 152; x += gap) { g.beginPath(); g.arc(x, y, 2.6, 0, 7); g.fill(); }
+  return c;
+}
+function newNotebookSheet() {
+  sheet("New Notebook", "Create", body => {
+    let folderId = selFolder === "all" ? null : selFolder, paper = "GRID", cover = 0;
+    body.innerHTML = `<input class="field" id="nname" placeholder="Name"><div class="label" style="margin:0">Folder</div><div class="row" id="fch"></div>
+      <div class="label" style="margin:0">Paper style</div><div class="row" id="pch" style="gap:12px"></div><div class="label" style="margin:0">Cover</div><div class="row" id="cch"></div>`;
+    const redraw = () => {
+      const fch = body.querySelector("#fch"); fch.innerHTML = "";
+      [[null, "No folder"]].concat(folders.map(f => [f._id, f.name])).forEach(([id, n]) => { const b = document.createElement("button"); b.className = "chip" + (folderId === id ? " sel" : ""); b.textContent = n; b.onclick = () => { folderId = id; redraw(); }; fch.appendChild(b); });
+      const pch = body.querySelector("#pch"); pch.innerHTML = "";
+      [["Ruled", "RULED"], ["Grid", "GRID"], ["Dots", "DOT"], ["Blank", "BLANK"]].forEach(([n, k]) => { const d = document.createElement("button"); d.className = "paper" + (paper === k ? " sel" : ""); d.appendChild(paperPreview(k)); const s = document.createElement("span"); s.textContent = n; d.appendChild(s); d.onclick = () => { paper = k; redraw(); }; pch.appendChild(d); });
+      const cch = body.querySelector("#cch"); cch.innerHTML = "";
+      COVERS.forEach((c, i) => { const d = document.createElement("button"); d.className = "cc" + (cover === i ? " sel" : ""); d.innerHTML = `<i style="background:${c}"></i>`; d.onclick = () => { cover = i; redraw(); }; cch.appendChild(d); });
+    };
+    redraw();
+    return () => ({ name: body.querySelector("#nname").value, folderId, paper, cover });
+  }, async v => {
+    try { const nb = await createNotebook(v.name, v.paper, v.cover, v.folderId); await loadLibrary(); const n = notebooks.find(x => x._id === nb._id); if (n) openTab(n); }
+    catch (e) { toast("Could not create the notebook: " + e.message, true); }
+  });
+}
+
+// ------------------------------------------------------------------ notebook screen
+async function openTab(nb) {
+  if (!tabs.includes(nb._id)) tabs.push(nb._id);
+  store.set("snote_tabs", JSON.stringify(tabs));
+  active = nb._id; await openNotebook(nb, 0);
+}
+async function openNotebook(nb, startIdx, quiet) {
+  current = nb; idx = startIdx || 0; closeBoxEditor(true); active = nb._id;
+  $("start").classList.add("hidden"); $("nbscreen").classList.remove("hidden"); renderTabs();
+  if (!quiet) toast("Loading pages…");
+  try {
+    pages = (await backend.pagesOf(nb._id)).map(p => { p.id = p._id; return p; }).sort((a, b) => a.index - b.index);
+    pages.forEach(prepPage);
+    const ids = [...new Set(pages.filter(p => p.type === "TYPED" && p.documentId).map(p => p.documentId))];
+    await Promise.all(ids.map(async id => {
+      const d = await backend.get("documents", id); const c = d ? parseContent(d.content) : { paras: [{ runs: [] }], spacing: 1.2 };
+      docModels[id] = { id, paras: c.paras, spacing: c.spacing, content: d ? d.content : "" };
+      typedCache[id] = paginate(layout(c.paras, c.spacing, 483));
+    }));
+    assignRuns();
+    toast("");
+    idx = Math.min(idx, Math.max(0, pages.length - 1));
+    showPage();
+  } catch (e) { toast("Could not load pages: " + e.message, true); }
+}
+function curPage() { return pages[idx]; }
+function setTool(t) {
+  tool = t; edit = t !== null; closeBoxEditor(true); if (!edit) selectedBox = null;
+  if (cv) { cv.style.touchAction = edit ? "none" : "auto"; cv.style.cursor = !edit ? "default" : tool === "text" ? "text" : tool === "eraser" ? "cell" : "crosshair"; }
+  refreshTools();
+}
+function showPage() {
+  closeBoxEditor(true);
+  const stage = $("stage");
+  if (!pages.length) { stage.innerHTML = '<div id="empty">This notebook has no pages yet.</div>'; $("pageNo").textContent = ""; cv = null; return; }
+  $("pageNo").textContent = `Page ${idx + 1} of ${pages.length}`;
+  $("prev").disabled = idx === 0; $("next").disabled = idx === pages.length - 1;
+  stage.innerHTML = ""; const wrap = document.createElement("div"); wrap.id = "wrap"; cv = document.createElement("canvas"); wrap.appendChild(cv); stage.appendChild(wrap);
+  const cs = getComputedStyle(stage);
+  const availW = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const availH = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const fit = Math.max(0.2, Math.min(availW / PW, availH / PH, 2.2));
+  const cssW = Math.floor(PW * fit), cssH = Math.floor(PH * fit), dpr = window.devicePixelRatio || 1;
+  scaleCss = cssW / PW;
+  cv.style.width = cssW + "px"; cv.style.height = cssH + "px";
+  cv.width = Math.floor(cssW * dpr); cv.height = Math.floor(cssH * dpr);
+  cv.style.touchAction = edit ? "none" : "auto";
+  cv.style.cursor = !edit ? "default" : tool === "text" ? "text" : tool === "eraser" ? "cell" : "crosshair";
+  redraw();
+  const shown = curPage();
+  if (shown.type === "PDF" && !pdfBitmaps[pdfKey(shown)]) ensurePdfBitmap(shown).then(() => { if (curPage() === shown) redraw(); });
+  cv.onmousedown = e => { if (edit && tool === "text") e.preventDefault(); };
+  cv.onpointerdown = onDown; cv.onpointermove = onMove; cv.onpointerup = onUp; cv.onpointercancel = onUp;
+  refreshTools();
+}
+function redraw() { if (cv && curPage()) renderPage(cv.getContext("2d"), current, curPage(), cv.width / PW); }
+function go(d) { const n = idx + d; if (n >= 0 && n < pages.length) { idx = n; showPage(); } }
+function refreshTools() {
+  document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("sel", b.dataset.tool === tool));
+  document.querySelectorAll("[data-col]").forEach(b => b.classList.toggle("sel", +b.dataset.col === colIdx));
+  const p = curPage();
+  $("undo").disabled = !p || !p._undo.length; $("redo").disabled = !p || !p._redo.length;
+  $("delBox").classList.toggle("hidden", !selectedBox);
+}
+
+// ------------------------------------------------------------------ drawing, erasing, text boxes
+let live = null, base = null, dragBox = null, erasedNow = null;
+function pt(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * PW, y: (e.clientY - r.top) / r.height * PH }; }
+let penSeen = false;   // once a stylus has touched the page, fingers stop drawing (palm rejection)
+function fingerBlocked(e) { if (e.pointerType === "pen") penSeen = true; return e.pointerType === "touch" && penSeen && tool !== "text"; }
+function onDown(e) {
+  if (!edit || !curPage() || e.button > 0) return;
+  if (fingerBlocked(e)) return;
+  const p = curPage(), q = pt(e);
+  if (tool === "pen" || tool === "marker") {
+    cv.setPointerCapture(e.pointerId);
+    live = { tool: tool === "pen" ? "PEN" : "MARKER", color: INK_COLORS[colIdx], width: tool === "marker" ? PEN_WIDTH * 4 : PEN_WIDTH, n: 0, pts: [], t0: performance.now() };
+    addPoint(q, e);
+    base = document.createElement("canvas"); base.width = cv.width; base.height = cv.height; base.getContext("2d").drawImage(cv, 0, 0);
+  } else if (tool === "eraser") {
+    cv.setPointerCapture(e.pointerId); erasedNow = []; eraseAt(q);
+  } else if (tool === "text") {
+    if (p.type === "TYPED") { openDocEditor(p); return; }
+    const hit = boxAt(q);
+    if (hit) { selectedBox = hit.id; cv.setPointerCapture(e.pointerId); dragBox = { box: hit, sx: q.x, sy: q.y, ox: hit.x, oy: hit.y, moved: false }; refreshTools(); }
+    else { selectedBox = null; newBoxAt(q); }
+  }
+}
+function addPoint(q, e) { live.pts.push(q.x, q.y, e.pressure > 0 ? e.pressure : 0.5, performance.now() - live.t0); live.n++; }
+function onMove(e) {
+  if (!edit) return;
+  if (e.pointerType === "touch" && penSeen && !live && !erasedNow && !dragBox) return;
+  const q = pt(e);
+  if (live) {
+    addPoint(q, e);
+    const ctx = cv.getContext("2d"); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.drawImage(base, 0, 0);
+    ctx.save(); ctx.scale(cv.width / PW, cv.width / PW); drawStroke(ctx, Object.assign({}, live, { pts: live.pts })); ctx.restore();
+  } else if (erasedNow && e.buttons) { eraseAt(q); }
+  else if (dragBox) {
+    const dx = q.x - dragBox.sx, dy = q.y - dragBox.sy;
+    if (Math.abs(dx) + Math.abs(dy) > 3) dragBox.moved = true;
+    if (dragBox.moved) { dragBox.box.x = Math.max(0, Math.min(PW - dragBox.box.w, dragBox.ox + dx)); dragBox.box.y = Math.max(0, Math.min(PH - 20, dragBox.oy + dy)); redraw(); }
+  }
+}
+function onUp() {
+  const p = curPage(); if (!p) return;
+  if (live) {
+    const s = { tool: live.tool, color: live.color, width: live.width, n: live.n, pts: Float32Array.from(live.pts) };
+    live = null; base = null;
+    p._strokes.push(s); p._undo.push({ t: "add", s }); p._redo = [];
+    markDirty(p); redraw(); refreshTools();
+  } else if (erasedNow) {
+    if (erasedNow.length) { p._undo.push({ t: "erase", list: erasedNow }); p._redo = []; markDirty(p); }
+    erasedNow = null; refreshTools();
+  } else if (dragBox) {
+    const d = dragBox; dragBox = null;
+    if (d.moved) { markDirty(p); redraw(); } else openBoxEditor(d.box);
+  }
+}
+function eraseAt(q) {
+  const p = curPage(); let changed = false;
+  for (let i = p._strokes.length - 1; i >= 0; i--) {
+    if (strokeHit(p._strokes[i], q.x, q.y, 10)) { erasedNow.push({ i, s: p._strokes[i] }); p._strokes.splice(i, 1); changed = true; }
+  }
+  if (changed) redraw();
+}
+function undo() {
+  const p = curPage(); if (!p || !p._undo.length) return;
+  const op = p._undo.pop();
+  if (op.t === "add") { const k = p._strokes.indexOf(op.s); if (k >= 0) p._strokes.splice(k, 1); }
+  else { op.list.slice().sort((a, b) => a.i - b.i).forEach(x => p._strokes.splice(Math.min(x.i, p._strokes.length), 0, x.s)); }
+  p._redo.push(op); markDirty(p); redraw(); refreshTools();
+}
+function redo() {
+  const p = curPage(); if (!p || !p._redo.length) return;
+  const op = p._redo.pop();
+  if (op.t === "add") p._strokes.push(op.s);
+  else op.list.forEach(x => { const k = p._strokes.indexOf(x.s); if (k >= 0) p._strokes.splice(k, 1); });
+  p._undo.push(op); markDirty(p); redraw(); refreshTools();
+}
+function boxAt(q) {
+  const p = curPage(); const bs = (p._boxes || []).slice().sort((a, b) => b.z - a.z);
+  return bs.find(b => q.x >= b.x && q.x <= b.x + b.w && q.y >= b.y && q.y <= b.y + boxHeight(b)) || null;
+}
+function newBoxAt(q) {
+  const p = curPage(), z = Math.max(-1, ...p._boxes.map(b => b.z)) + 1;
+  const b = { id: uuid(), x: Math.max(0, Math.min(PW - 260, q.x)), y: Math.max(0, Math.min(PH - 40, q.y)), w: 260, h: 40, z,
+              content: contentJson([{ style: "body", align: "left", list: "none", indent: 0, runs: [] }], 1.2), updatedAt: Date.now() };
+  p._boxes.push(b); selectedBox = b.id; openBoxEditor(b, true);
+}
+function openBoxEditor(b, isNew) {
+  closeBoxEditor(false);
+  editingBoxId = b.id; selectedBox = b.id; redraw(); refreshTools();
+  const ta = document.createElement("textarea"); ta.id = "boxEd"; ta.value = boxToText(b);
+  const c = parseContent(b.content), size = ((c.paras[0].runs || [])[0] || {}).size || 14;
+  ta.style.left = (b.x * scaleCss) + "px"; ta.style.top = (b.y * scaleCss) + "px"; ta.style.width = (b.w * scaleCss) + "px";
+  ta.style.fontSize = (size * scaleCss) + "px"; ta.style.padding = (4 * scaleCss) + "px";
+  const grow = () => { ta.style.height = "auto"; ta.style.height = Math.max(ta.scrollHeight, 24) + "px"; };
+  ta.oninput = grow; ta.onblur = () => closeBoxEditor(true);
+  ta.onkeydown = ev => { if (ev.key === "Escape") { ev.preventDefault(); ta.blur(); } };
+  $("wrap").appendChild(ta); grow();
+  setTimeout(() => { if ($("boxEd") === ta) ta.focus(); }, 0);   // after the click that opened it finishes, or its focus change would close the editor
+  ta._isNew = !!isNew;
+}
+function closeBoxEditor(commit) {
+  const ta = $("boxEd"); if (!ta) { editingBoxId = null; return; }
+  const p = curPage(), b = p && p._boxes.find(x => x.id === editingBoxId);
+  ta.onblur = null; const text = ta.value; ta.remove(); editingBoxId = null;
+  if (!b) return;
+  if (commit) {
+    if (!text.trim()) { p._boxes = p._boxes.filter(x => x !== b); selectedBox = null; markDirty(p); }
+    else if (text !== boxToText(b)) {
+      b.content = textToContent(b.content, text); b.updatedAt = Date.now();
+      const c = parseContent(b.content); b.h = Math.ceil(layout(c.paras, c.spacing, Math.max(20, b.w - 8)).height + 8);
+      markDirty(p);
+    }
+  }
+  redraw(); refreshTools();
+}
+function deleteSelectedBox() {
+  const p = curPage(); if (!p || !selectedBox) return;
+  closeBoxEditor(false); p._boxes = p._boxes.filter(b => b.id !== selectedBox); selectedBox = null; markDirty(p); redraw(); refreshTools();
+}
+
+// ------------------------------------------------------------------ typed page editor
+// The whole document is edited as one A4-wide sheet. Paragraphs are <div class="p"> with data-style/-align/-list/-indent;
+// inline formatting is native (bold, italic, underline, strike). The text is converted to and from the app's paragraph/run model.
+const STYLE_SIZE = { body: 14, subheading: 16, heading: 20, title: 26 };
+let docEd = null, docK = 1;
+function applyRunStyle(s, r, k) {
+  s.style.fontSize = ((r.size || 14) * k) + "px";
+  if (r.bold) s.style.fontWeight = "700"; if (r.italic) s.style.fontStyle = "italic";
+  const deco = [r.underline ? "underline" : "", r.strike ? "line-through" : ""].filter(Boolean).join(" "); if (deco) s.style.textDecoration = deco;
+  if (r.font && r.font !== "sans") s.style.fontFamily = FAMILY[r.font] || FAMILY.sans;
+  if (r.color) s.style.color = argb(r.color); if (r.highlight) s.style.backgroundColor = argb(r.highlight);
+}
+function renderDocDom(root, paras, k) {
+  root.innerHTML = "";
+  paras.forEach(p => {
+    const d = document.createElement("div"); d.className = "p";
+    d.dataset.style = p.style || "body"; d.dataset.align = p.align || "left"; d.dataset.list = p.list || "none"; d.dataset.indent = p.indent || 0;
+    d.style.textAlign = p.align || "left";
+    const ind = (p.indent || 0) * INDENT * k; d.style.setProperty("--ind", ind + "px");
+    d.style.paddingLeft = (ind + (p.list && p.list !== "none" ? LIST_MARGIN * k : 0)) + "px";
+    d.style.fontSize = (14 * k) + "px";
+    const text = (p.runs || []).map(r => r.text || "").join("");
+    if (text === BREAK) { d.dataset.brk = "1"; d.textContent = BREAK; }
+    else if (!text) d.appendChild(document.createElement("br"));
+    else p.runs.forEach(r => { const s = document.createElement("span"); s.textContent = r.text || ""; applyRunStyle(s, r, k); d.appendChild(s); });
+    root.appendChild(d);
+  });
+}
+function rgbToInt(c) {
+  const m = /rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/.exec(c || ""); if (!m) return 0;
+  const a = m[4] === undefined ? 1 : parseFloat(m[4]); if (a === 0) return 0;
+  const v = ((Math.round(a * 255) << 24) | (+m[1] << 16) | (+m[2] << 8) | +m[3]) | 0;
+  return v === (0xFF000000 | 0) ? 0 : v;       // plain black is the default colour
+}
+function walkInline(node, fmt, runs, k) {
+  if (node.nodeType === 3) { if (node.nodeValue) runs.push(Object.assign({ text: node.nodeValue }, fmt)); return; }
+  if (node.nodeType !== 1 || node.tagName === "BR") return;
+  const f = Object.assign({}, fmt), st = node.style, tag = node.tagName;
+  if (tag === "B" || tag === "STRONG" || st.fontWeight === "bold" || parseInt(st.fontWeight, 10) >= 600) f.bold = true;
+  else if (st.fontWeight === "normal" || st.fontWeight === "400") f.bold = false;
+  if (tag === "I" || tag === "EM" || st.fontStyle === "italic") f.italic = true; else if (st.fontStyle === "normal") f.italic = false;
+  const td = (st.textDecorationLine || st.textDecoration || "");
+  if (tag === "U" || td.includes("underline")) f.underline = true; if (tag === "S" || tag === "STRIKE" || tag === "DEL" || td.includes("line-through")) f.strike = true;
+  if (st.fontSize && /px$/.test(st.fontSize)) f.size = Math.max(1, Math.round(parseFloat(st.fontSize) / k));
+  if (st.fontFamily) f.font = /mono|consolas/i.test(st.fontFamily) ? "mono" : /georgia|serif/i.test(st.fontFamily) && !/sans/i.test(st.fontFamily) ? "serif" : "sans";
+  if (st.color) { const c = rgbToInt(st.color); if (c) f.color = c; }
+  if (st.backgroundColor) { const c = rgbToInt(st.backgroundColor); if (c) f.highlight = c; }
+  Array.from(node.childNodes).forEach(c => walkInline(c, f, runs, k));
+}
+function elToPara(el, k) {
+  const raw = [];
+  Array.from(el.childNodes).forEach(c => walkInline(c, { size: 14 }, raw, k));
+  const runs = [];
+  raw.forEach(r => {
+    const clean = { text: r.text, size: r.size || 14 };
+    ["bold", "italic", "underline", "strike", "font", "color", "highlight"].forEach(key => { if (r[key]) clean[key] = r[key]; });
+    const last = runs[runs.length - 1];
+    if (last && JSON.stringify(Object.assign({}, last, { text: "" })) === JSON.stringify(Object.assign({}, clean, { text: "" }))) last.text += clean.text; else runs.push(clean);
+  });
+  const text = runs.map(r => r.text).join("");
+  if (el.dataset.brk || text === BREAK) return { style: "body", align: "left", list: "none", indent: 0, runs: [{ text: BREAK, size: 14 }] };
+  return { style: el.dataset.style || "body", align: el.dataset.align || "left", list: el.dataset.list || "none", indent: parseInt(el.dataset.indent || "0", 10) || 0, runs: runs.filter(r => r.text) };
+}
+function domToParas(root, k) {
+  const out = []; let cur = null;
+  Array.from(root.childNodes).forEach(n => {
+    if (n.nodeType === 1 && /^(DIV|P)$/.test(n.tagName)) { out.push(n); cur = null; }
+    else { if (!cur) { cur = document.createElement("div"); cur.className = "p"; out.push(cur); } cur.appendChild(n.cloneNode(true)); }
+  });
+  const paras = out.map(el => elToPara(el, k));
+  return paras.length ? paras : [EMPTY_PARA()];
+}
+function caretPos(root) {
+  const sel = getSelection(); if (!sel.rangeCount || !root.contains(sel.anchorNode)) return null;
+  let node = sel.anchorNode; while (node && node.parentNode !== root) node = node.parentNode; if (!node) return null;
+  const r = document.createRange(); r.selectNodeContents(node); r.setEnd(sel.anchorNode, sel.anchorOffset);
+  return { idx: Array.prototype.indexOf.call(root.children, node), off: r.toString().length };
+}
+function setCaret(root, pos) {
+  if (!pos) return; const el = root.children[Math.min(pos.idx, root.children.length - 1)]; if (!el) return;
+  const s = getSelection(), r = document.createRange(); let left = pos.off, n; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  while ((n = w.nextNode())) { if (left <= n.nodeValue.length) { r.setStart(n, left); r.collapse(true); s.removeAllRanges(); s.addRange(r); return; } left -= n.nodeValue.length; }
+  r.selectNodeContents(el); r.collapse(true); s.removeAllRanges(); s.addRange(r);
+}
+function selRange(root) {
+  const sel = getSelection(); const find = n => { while (n && n.parentNode !== root) n = n.parentNode; return n ? Array.prototype.indexOf.call(root.children, n) : -1; };
+  if (!sel.rangeCount || !root.contains(sel.anchorNode)) return [0, 0];
+  const a = find(sel.anchorNode), b = find(sel.focusNode); return [Math.max(0, Math.min(a, b)), Math.max(a, b, 0)];
+}
+function mutateDoc(fn) {
+  const root = $("docsheet"), pos = caretPos(root), sel = selRange(root), paras = domToParas(root, docK);
+  const where = fn(paras, sel);                       // an action may say where the cursor should go (e.g. below a page break)
+  renderDocDom(root, paras, docK); root.focus(); setCaret(root, where || pos); scheduleDocSave();
+}
+function docPageCount() { const m = docModels[docEd.docId]; const paras = domToParas($("docsheet"), docK); return Math.max(1, paginate(layout(paras, m.spacing, 483)).length); }
+function scheduleDocSave() {
+  if (!docEd) return;
+  clearTimeout(docEd.infoTimer); docEd.infoTimer = setTimeout(() => { if (docEd) $("docInfo").textContent = docPageCount() + (docPageCount() === 1 ? " page" : " pages"); }, 300);
+  clearTimeout(docEd.timer); saveState("Unsaved changes"); docEd.timer = setTimeout(saveDocNow, 1200);
+}
+let docSaveChain = Promise.resolve();
+function saveDocNow() {
+  docSaveChain = docSaveChain.then(async () => {
+    if (!docEd) return; clearTimeout(docEd.timer);
+    const root = $("docsheet"); if (!root) return;
+    const m = docModels[docEd.docId], paras = domToParas(root, docK), content = contentJson(paras, m.spacing);
+    if (content === m.content) { saveState(""); return; }
+    saveState("Saving…");
+    try {
+      m.paras = paras; m.content = content;
+      await backend.put("documents", docEd.docId, { notebookId: current._id, content, updatedAt: Date.now() });
+      await syncDocPages(docEd.docId);
+      saveState("Saved " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    } catch (e) { saveState("Not saved"); toast("Could not save the text: " + e.message, true); }
+  });
+  return docSaveChain;
+}
+function openDocEditor(page) {
+  if (docEd || !page.documentId) return;
+  const m = docModels[page.documentId]; if (!m) return;
+  closeBoxEditor(true); document.execCommand("defaultParagraphSeparator", false, "div");
+  const scr = $("nbscreen"); scr.classList.add("docediting");
+  const ed = document.createElement("div"); ed.id = "docEd";
+  ed.innerHTML = `<div id="docbar">
+    <select id="dStyle"><option value="body">Body</option><option value="title">Title</option><option value="heading">Heading</option><option value="subheading">Subheading</option></select>
+    <button class="tb" data-cmd="bold"><b>B</b></button><button class="tb" data-cmd="italic"><i>I</i></button><button class="tb" data-cmd="underline"><u>U</u></button><button class="tb" data-cmd="strikeThrough"><s>S</s></button>
+    <button class="tb" data-act="bullet">• List</button><button class="tb" data-act="number">1. List</button>
+    <button class="tb" data-act="left">Left</button><button class="tb" data-act="center">Centre</button><button class="tb" data-act="right">Right</button>
+    <button class="tb" data-act="outdent">&larr;</button><button class="tb" data-act="indent">&rarr;</button>
+    <button class="tb" data-act="break">Page break</button>
+    <button class="btn filled" id="dDone" style="min-height:40px;padding:0 18px">Done</button><span class="info" id="docInfo"></span></div>
+    <div id="docscroll"><div id="docsheet" contenteditable="true" spellcheck="true"></div></div>`;
+  scr.appendChild(ed);
+  const root = $("docsheet");
+  const avail = $("docscroll").clientWidth - 32; docK = Math.max(0.5, Math.min(1.5, avail / 595));
+  root.style.setProperty("--k", docK);
+  docEd = { docId: page.documentId, timer: null, infoTimer: null, startPage: page };
+  renderDocDom(root, m.paras, docK);
+  $("docInfo").textContent = docPageCount() + (docPageCount() === 1 ? " page" : " pages");
+  root.oninput = scheduleDocSave;
+  root.onpaste = e => { e.preventDefault(); const t = (e.clipboardData || window.clipboardData).getData("text/plain"); document.execCommand("insertText", false, t); };
+  ed.querySelectorAll("#docbar .tb, #docbar .btn").forEach(b => b.onmousedown = e => e.preventDefault());       // keep the text selected while pressing a button
+  ed.querySelectorAll("[data-cmd]").forEach(b => b.onclick = () => { root.focus(); document.execCommand(b.dataset.cmd); scheduleDocSave(); });
+  $("dStyle").onchange = e => { const s = e.target.value; mutateDoc((ps, [lo, hi]) => { for (let i = lo; i <= hi; i++) { const p = ps[i]; if (!p || (p.runs[0] && p.runs[0].text === BREAK)) continue; p.style = s; p.runs = p.runs.map(r => Object.assign({}, r, { size: STYLE_SIZE[s], bold: s !== "body" })); } }); };
+  ed.querySelectorAll("[data-act]").forEach(b => b.onclick = () => {
+    const a = b.dataset.act;
+    mutateDoc((ps, [lo, hi]) => {
+      if (a === "break") { ps.splice(hi + 1, 0, { style: "body", align: "left", list: "none", indent: 0, runs: [{ text: BREAK, size: 14 }] }, EMPTY_PARA()); return { idx: hi + 2, off: 0 }; }
+      const same = k => ps.slice(lo, hi + 1).every(p => p.list === k);
+      for (let i = lo; i <= hi; i++) {
+        const p = ps[i]; if (!p) continue;
+        if (a === "bullet" || a === "number") p.list = same(a) ? "none" : a;
+        else if (a === "left" || a === "center" || a === "right") p.align = a;
+        else if (a === "indent") p.indent = Math.min(6, (p.indent || 0) + 1);
+        else if (a === "outdent") p.indent = Math.max(0, (p.indent || 0) - 1);
+      }
+    });
+  });
+  $("dDone").onclick = closeDocEditor;
+  setTimeout(() => root.focus(), 0);
+}
+async function closeDocEditor() {
+  if (!docEd) return;
+  const startPage = docEd.startPage; await saveDocNow();
+  const ed = $("docEd"); if (ed) ed.remove(); $("nbscreen").classList.remove("docediting");
+  docEd = null; saveState("");
+  idx = Math.max(0, Math.min(idx, pages.length - 1)); showPage();
+}
+
+// ------------------------------------------------------------------ importing a PDF
+async function startPdfImport(file) {
+  if (!file) return;
+  if (file.size > MAX_PDF) { toast("That PDF is " + (file.size / 1048576).toFixed(1) + " MB. The limit is 25 MB.", true); return; }
+  try {
+    toast("Reading the PDF…");
+    const lib = await loadPdfLib(), bytes = new Uint8Array(await file.arrayBuffer());
+    const doc = await lib.getDocument({ data: bytes.slice() }).promise;      // pdf.js takes its own copy
+    toast("");
+    const name = file.name.replace(/\.pdf$/i, ""), pageCount = doc.numPages;
+    sheet("Import PDF", "Import", body => {
+      let folderId = selFolder === "all" ? null : selFolder;
+      body.innerHTML = `<input class="field" id="pname" placeholder="Name"><div class="label" style="margin:0">Folder</div><div class="row" id="pf"></div>
+        <div class="muted" style="font-size:13px">${pageCount} page${pageCount === 1 ? "" : "s"}. Each page of the PDF becomes a notebook page you can write, draw and type on.</div>`;
+      body.querySelector("#pname").value = name;
+      const redraw = () => { const pf = body.querySelector("#pf"); pf.innerHTML = ""; [[null, "No folder"]].concat(folders.map(f => [f._id, f.name])).forEach(([id, n]) => { const b = document.createElement("button"); b.className = "chip" + (folderId === id ? " sel" : ""); b.textContent = n; b.onclick = () => { folderId = id; redraw(); }; pf.appendChild(b); }); };
+      redraw();
+      return () => ({ name: body.querySelector("#pname").value, folderId });
+    }, async v => {
+      const id = uuid();
+      try {
+        await uploadPdf(id, bytes, file.name, f => toast("Uploading the PDF… " + Math.round(f * 100) + "%"));
+        toast("Creating the notebook…");
+        await createPdfNotebook(id, v.name, v.folderId, pageCount);
+        toast(""); await loadLibrary();
+        const n = notebooks.find(x => x._id === id); if (n) openTab(n);
+      } catch (e) { toast("Could not import the PDF: " + e.message, true); }
+    });
+  } catch (e) { toast("Could not read that PDF: " + e.message + " (password-protected files are not supported)", true); }
+}
+$("pdfFile").onchange = e => { const f = e.target.files[0]; e.target.value = ""; startPdfImport(f); };
+
+// ------------------------------------------------------------------ wiring
+async function signOut() {
+  await waitSaved(); session = null; demo = false; backend = cloud; forget(); current = null; pages = []; tabs = []; active = "start"; tool = null; edit = false;
+  $("password").value = ""; showLogin("");
+}
+$("prev").onclick = async () => { await waitSaved(); go(-1); }; $("next").onclick = async () => { await waitSaved(); go(1); };
+document.addEventListener("keydown", e => {
+  if (e.target && (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.isContentEditable)) return;
+  if (active === "start" || docEd) return;
+  if (e.key === "ArrowLeft") go(-1); if (e.key === "ArrowRight") go(1);
+  if (edit && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+  if (edit && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") { e.preventDefault(); redo(); }
+});
+window.addEventListener("resize", () => { if (current && pages.length && active !== "start" && !editingBoxId && !live && !docEd) showPage(); });
+document.querySelectorAll("[data-tool]").forEach(b => b.onclick = () => setTool(tool === b.dataset.tool ? null : b.dataset.tool));
+document.querySelectorAll("[data-col]").forEach(b => b.onclick = () => { colIdx = +b.dataset.col; if (tool !== "pen" && tool !== "marker") setTool("pen"); else refreshTools(); });
+$("undo").onclick = undo; $("redo").onclick = redo; $("delBox").onclick = deleteSelectedBox;
+$("menuFab").onclick = () => { $("nbPanelWrap").classList.remove("hidden"); document.querySelectorAll("[data-th]").forEach(b => b.classList.toggle("sel", b.dataset.th === currentTheme())); };
+$("nbPanelWrap").onclick = e => { if (e.target === $("nbPanelWrap")) $("nbPanelWrap").classList.add("hidden"); };
+$("closePanel").onclick = () => $("nbPanelWrap").classList.add("hidden");
+document.querySelectorAll("#themeSeg2 [data-th]").forEach(b => b.onclick = () => applyTheme(b.dataset.th));
+$("plusFab").onclick = () => $("plusMenu").classList.toggle("hidden");
+document.addEventListener("click", e => { if (!e.target.closest("#plusMenu") && !e.target.closest("#plusFab")) $("plusMenu").classList.add("hidden"); });
+$("addPage").onclick = async () => {
+  $("plusMenu").classList.add("hidden");
+  try { await addPageAfter(idx); idx = idx + 1; showPage(); } catch (e) { toast("Could not add the page: " + e.message, true); }
+};
+$("addTyped").onclick = async () => {
+  $("plusMenu").classList.add("hidden");
+  try { const np = await addTypedPageAfter(idx); idx = pages.indexOf(np); showPage(); setTool("text"); openDocEditor(np); }
+  catch (e) { toast("Could not add the typed page: " + e.message, true); }
+};
+$("delPage").onclick = async () => {
+  $("plusMenu").classList.add("hidden");
+  if (!pages.length || !confirm("Delete this page? This also removes it from your other devices.")) return;
+  try { await deletePageAt(idx); idx = Math.min(idx, pages.length - 1); showPage(); } catch (e) { toast("Could not delete the page: " + e.message, true); }
+};
+$("png").onclick = async () => {
+  $("nbPanelWrap").classList.add("hidden");
+  if (!pages.length) return;
+  if (curPage().type === "PDF") await ensurePdfBitmap(curPage());
+  const c2 = document.createElement("canvas"); c2.width = PW * 3; c2.height = PH * 3;
+  renderPage(c2.getContext("2d"), current, curPage(), 3);
+  c2.toBlob(b => { const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `${(current.title || "page").replace(/[^\w\- ]+/g, "_")}-${idx + 1}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); });
+};
+
+// ------------------------------------------------------------------ sign-in, demo and start-up
+function showLogin(msg) { $("app").classList.add("hidden"); $("login").classList.remove("hidden"); $("loginErr").textContent = msg || ""; }
+async function enterApp() {
+  $("login").classList.add("hidden"); $("app").classList.remove("hidden");
+  $("demoBanner").classList.toggle("hidden", !demo);
+  try { tabs = demo ? [] : JSON.parse(store.get("snote_tabs") || "[]"); } catch (e) { tabs = []; }
+  active = "start"; current = null; renderTabs(); showStart();
+  await loadLibrary();
+}
+$("loginForm").onsubmit = async e => {
+  e.preventDefault(); $("loginErr").textContent = ""; $("signInBtn").disabled = true;
+  try {
+    const j = await authCall("signInWithPassword", { email: $("email").value.trim(), password: $("password").value, returnSecureToken: true });
+    demo = false; backend = cloud; setSession(j); remember(); await enterApp();
+  } catch (err) { $("loginErr").textContent = err.message; }
+  $("signInBtn").disabled = false;
+};
+$("resetBtn").onclick = async () => {
+  const email = $("email").value.trim(); if (!email) { $("loginErr").textContent = "Enter your email first."; return; }
+  try { await authCall("sendOobCode", { requestType: "PASSWORD_RESET", email }); $("loginErr").textContent = "Password reset email sent. Check your inbox."; }
+  catch (err) { $("loginErr").textContent = err.message; }
+};
+function seedDemo() {
+  const now = Date.now();
+  const spiral = { tool: "PEN", color: INK_COLORS[1], width: 3, n: 0, pts: [] };
+  for (let i = 0; i < 90; i++) { const a = i / 8, r = 6 + i * 1.4; spiral.pts.push(420 + Math.cos(a) * r, 520 + Math.sin(a) * r, 0.5 + 0.4 * Math.sin(i / 9), i * 12); spiral.n++; }
+  spiral.pts = Float32Array.from(spiral.pts);
+  const under = { tool: "MARKER", color: INK_COLORS[2], width: 12, n: 2, pts: Float32Array.from([70, 138, 0.5, 0, 330, 138, 0.5, 200]) };
+  const box = { id: uuid(), x: 60, y: 90, w: 300, h: 80, z: 0, updatedAt: now,
+    content: contentJson([
+      { style: "heading", align: "left", list: "none", indent: 0, runs: [{ text: "Meeting notes", size: 22, bold: true }] },
+      { style: "body", align: "left", list: "bullet", indent: 0, runs: [{ text: "Sync works between the tablet and here", size: 14 }] },
+      { style: "body", align: "left", list: "bullet", indent: 0, runs: [{ text: "Draw with the pen, ", size: 14 }, { text: "type with the text tool", size: 14, italic: true }] },
+    ], 1.2) };
+  demoStore.folders["demo-f1"] = { name: "Work", sortOrder: 0, updatedAt: now };
+  demoStore.notebooks["demo-nb1"] = { folderId: "demo-f1", title: "Maths", cover: 0, paperStyle: "GRID", createdAt: now, updatedAt: now, lastOpenedAt: now };
+  demoStore.pages["demo-p1"] = { notebookId: "demo-nb1", index: 0, type: "INK", documentId: null, pdfPage: -1, updatedAt: now, boxes: JSON.stringify([box]), strokes: encodeStrokes([spiral, under]) };
+  demoStore.pages["demo-p2"] = { notebookId: "demo-nb1", index: 1, type: "INK", documentId: null, pdfPage: -1, updatedAt: now, boxes: "[]", strokes: encodeStrokes([]) };
+  demoStore.notebooks["demo-nb2"] = { folderId: null, title: "Typed pages", cover: 1, paperStyle: "BLANK", createdAt: now - 5, updatedAt: now - 5, lastOpenedAt: now - 5 };
+  demoStore.documents["demo-d1"] = { notebookId: "demo-nb2", updatedAt: now, content: contentJson([
+    { style: "title", align: "left", list: "none", indent: 0, runs: [{ text: "A typed page", size: 26, bold: true }] },
+    { style: "body", align: "left", list: "none", indent: 0, runs: [{ text: "Typed pages flow like a document and are edited in the SNote app. This viewer shows them as they are on the tablet, and you can draw over them.", size: 14 }] },
+  ], 1.2) };
+  demoStore.pages["demo-p3"] = { notebookId: "demo-nb2", index: 0, type: "TYPED", documentId: "demo-d1", pdfPage: -1, updatedAt: now, boxes: "[]", strokes: encodeStrokes([]) };
+  demoStore.notebooks["demo-nb3"] = { folderId: "demo-f1", title: "Ruled", cover: 2, paperStyle: "RULED", createdAt: now - 9, updatedAt: now - 9, lastOpenedAt: now - 9 };
+  demoStore.pages["demo-p4"] = { notebookId: "demo-nb3", index: 0, type: "INK", documentId: null, pdfPage: -1, updatedAt: now, boxes: "[]", strokes: encodeStrokes([]) };
+}
+$("demoBtn").onclick = async () => {
+  demo = true; backend = mem; session = { email: "demo (nothing is saved)", uid: "demo" };
+  Object.keys(demoStore).forEach(k => demoStore[k] = {}); seedDemo(); await enterApp();
+};
+(async () => {
+  applyTheme(null);
+  if (location.hash === "#demo") { $("demoBtn").onclick(); return; }
+  try {
+    const saved = JSON.parse(store.get("snote_session") || "null");
+    if (saved && saved.r) {
+      session = { refreshToken: saved.r, email: saved.e, expires: 0 };
+      await refreshIfNeeded(); session.email = saved.e;
+      await enterApp(); return;
+    }
+  } catch (e) { session = null; forget(); }
+  showLogin("");
+})();
+// pick up changes made on the tablet when coming back to this tab (never while there are unsaved edits)
+document.addEventListener("visibilitychange", () => { if (!document.hidden && session && !demo && !dirty.size && !live && !editingBoxId && !docEd) loadLibrary(); });
+</script>
+</body>
+</html>
